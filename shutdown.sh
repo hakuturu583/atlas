@@ -15,7 +15,6 @@ echo ""
 
 # オプション解析
 SHUTDOWN_FLASK=true
-SHUTDOWN_MCP=true
 SHUTDOWN_FIFTYONE=true
 SHUTDOWN_CARLA=true
 CLEAN_DOCKER=false
@@ -24,26 +23,17 @@ FORCE=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --flask-only)
-            SHUTDOWN_MCP=false
-            SHUTDOWN_FIFTYONE=false
-            SHUTDOWN_CARLA=false
-            shift
-            ;;
-        --mcp-only)
-            SHUTDOWN_FLASK=false
             SHUTDOWN_FIFTYONE=false
             SHUTDOWN_CARLA=false
             shift
             ;;
         --fiftyone-only)
             SHUTDOWN_FLASK=false
-            SHUTDOWN_MCP=false
             SHUTDOWN_CARLA=false
             shift
             ;;
         --carla-only)
             SHUTDOWN_FLASK=false
-            SHUTDOWN_MCP=false
             SHUTDOWN_FIFTYONE=false
             shift
             ;;
@@ -64,7 +54,6 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --flask-only     Flaskアプリケーションのみシャットダウン"
-            echo "  --mcp-only       MCPサーバーのみシャットダウン"
             echo "  --carla-only     CARLAサーバーのみシャットダウン"
             echo "  --fiftyone-only  FiftyOneのみシャットダウン"
             echo "  --no-carla       CARLAはシャットダウンしない"
@@ -92,7 +81,6 @@ done
 if [ "$FORCE" = false ]; then
     echo -e "${YELLOW}This will shutdown:${NC}"
     [ "$SHUTDOWN_FLASK" = true ] && echo "  ✓ Flask application (port 8000)"
-    [ "$SHUTDOWN_MCP" = true ] && echo "  ✓ MCP server"
     [ "$SHUTDOWN_CARLA" = true ] && echo "  ✓ CARLA server"
     [ "$CLEAN_DOCKER" = true ] && echo "  ✓ Docker images"
     echo ""

@@ -35,6 +35,81 @@ class ScenarioManager:
         self.rerun_dir.mkdir(parents=True, exist_ok=True)
         self.videos_dir.mkdir(parents=True, exist_ok=True)
 
+    def create_natural_scenario(
+        self,
+        prompt: str,
+        user_metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        自然言語シナリオを作成
+
+        Args:
+            prompt: ユーザーの自然言語要件
+            user_metadata: ユーザーメタデータ（オプション）
+
+        Returns:
+            生成された自然言語シナリオのUUID
+        """
+        natural_uuid = str(uuid.uuid4())
+
+        natural_scenario = {
+            "uuid": natural_uuid,
+            "prompt": prompt,
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "user_metadata": user_metadata or {}
+        }
+
+        # JSONファイルに保存
+        file_path = self.scenarios_dir / f"natural_{natural_uuid}.json"
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(natural_scenario, f, indent=2, ensure_ascii=False)
+
+        print(f"✓ 自然言語シナリオを作成: {file_path}")
+        print(f"  UUID: {natural_uuid}")
+        return natural_uuid
+
+    def create_pegasus_analysis(
+        self,
+        natural_uuid: str,
+        analysis: Dict[str, Any],
+        criticality: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        PEGASUS 6 Layer分析結果を作成
+
+        Args:
+            natural_uuid: 親の自然言語シナリオUUID
+            analysis: PEGASUS 6 Layerの分析結果
+            criticality: 危険度評価（オプション）
+
+        Returns:
+            生成されたPEGASUS分析のUUID
+        """
+        pegasus_uuid = str(uuid.uuid4())
+
+        # 親の自然言語シナリオが存在するか確認
+        natural_file = self.scenarios_dir / f"natural_{natural_uuid}.json"
+        if not natural_file.exists():
+            raise FileNotFoundError(f"親の自然言語シナリオが見つかりません: {natural_file}")
+
+        pegasus_analysis = {
+            "uuid": pegasus_uuid,
+            "natural_scenario_uuid": natural_uuid,
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "analysis": analysis,
+            "criticality": criticality or {}
+        }
+
+        # JSONファイルに保存
+        file_path = self.scenarios_dir / f"pegasus_{pegasus_uuid}.json"
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(pegasus_analysis, f, indent=2, ensure_ascii=False)
+
+        print(f"✓ PEGASUS分析を作成: {file_path}")
+        print(f"  UUID: {pegasus_uuid}")
+        print(f"  親: {natural_uuid}")
+        return pegasus_uuid
+
     def create_abstract_scenario(
         self,
         name: str,
@@ -42,7 +117,11 @@ class ScenarioManager:
         original_prompt: str,
         environment: Dict[str, Any],
         actors: List[Dict[str, Any]],
-        scenario_type: str
+        scenario_type: str,
+        natural_scenario_uuid: Optional[str] = None,
+        pegasus_analysis_uuid: Optional[str] = None,
+        pegasus_layers: Optional[Dict[str, str]] = None,
+        criticality: Optional[str] = None
     ) -> str:
         """
         抽象シナリオを作成
@@ -54,6 +133,10 @@ class ScenarioManager:
             environment: 環境設定 (location_type, features)
             actors: アクターのリスト
             scenario_type: シナリオタイプ
+            natural_scenario_uuid: 自然言語シナリオUUID（オプション）
+            pegasus_analysis_uuid: PEGASUS分析UUID（オプション）
+            pegasus_layers: PEGASUS Layerの要約（オプション）
+            criticality: 危険度レベル（オプション）
 
         Returns:
             生成された抽象シナリオのUUID
@@ -65,11 +148,21 @@ class ScenarioManager:
             "name": name,
             "description": description,
             "created_at": datetime.utcnow().isoformat() + "Z",
+            "original_prompt": original_prompt,
             "environment": environment,
             "actors": actors,
-            "scenario_type": scenario_type,
-            "original_prompt": original_prompt
+            "scenario_type": scenario_type
         }
+
+        # オプショナルフィールドを追加
+        if natural_scenario_uuid:
+            abstract_scenario["natural_scenario_uuid"] = natural_scenario_uuid
+        if pegasus_analysis_uuid:
+            abstract_scenario["pegasus_analysis_uuid"] = pegasus_analysis_uuid
+        if pegasus_layers:
+            abstract_scenario["pegasus_layers"] = pegasus_layers
+        if criticality:
+            abstract_scenario["criticality"] = criticality
 
         # JSONファイルに保存
         file_path = self.scenarios_dir / f"abstract_{abstract_uuid}.json"
@@ -183,6 +276,7 @@ class ScenarioManager:
 
         parameter_entry = {
             "created_at": datetime.utcnow().isoformat() + "Z",
+            "seed": seed,
             "sampled_values": sampled_values,
             "carla_config": carla_config,
             "output": {
@@ -352,6 +446,114 @@ class ScenarioManager:
                     "file": str(file_path)
                 })
         return scenarios
+
+    def derive_parameter_space_from_pegasus(
+        self,
+        pegasus_analysis: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        PEGASUS分析のexpected_valuesからparameter_spaceを自動導出
+
+        Args:
+            pegasus_analysis: PEGASUS分析のanalysisフィールド
+
+        Returns:
+            parameter_space（論理シナリオ用）
+        """
+        parameter_space = {}
+
+        def convert_expected_value(key: str, expected: Any) -> Optional[Dict[str, Any]]:
+            """expected_valueをparameter_space形式に変換"""
+            if isinstance(expected, dict):
+                if "min" in expected and "max" in expected:
+                    # 範囲 → uniform分布
+                    return {
+                        "type": "float",
+                        "unit": expected.get("unit", ""),
+                        "distribution": "uniform",
+                        "min": float(expected["min"]),
+                        "max": float(expected["max"]),
+                        "description": key
+                    }
+                elif "value" in expected:
+                    # 固定値 → constant分布
+                    value = expected["value"]
+                    return {
+                        "type": "float" if isinstance(value, (int, float)) else "string",
+                        "unit": expected.get("unit", ""),
+                        "distribution": "constant",
+                        "value": value,
+                        "description": key
+                    }
+                elif "presets" in expected or "choices" in expected:
+                    # 選択肢 → choice分布
+                    choices = expected.get("presets") or expected.get("choices")
+                    return {
+                        "type": "string",
+                        "distribution": "choice",
+                        "choices": choices,
+                        "description": key
+                    }
+            elif isinstance(expected, list):
+                # リスト → choice分布
+                return {
+                    "type": "string",
+                    "distribution": "choice",
+                    "choices": expected,
+                    "description": key
+                }
+            elif isinstance(expected, (int, float, str, bool)):
+                # 単一値 → constant分布
+                return {
+                    "type": "float" if isinstance(expected, (int, float)) else "string" if isinstance(expected, str) else "bool",
+                    "distribution": "constant",
+                    "value": expected,
+                    "description": key
+                }
+            return None
+
+        def process_layer(layer_data: Dict[str, Any], prefix: str = ""):
+            """レイヤーのexpected_valuesを再帰的に処理"""
+            expected_values = layer_data.get("expected_values", {})
+            for key, value in expected_values.items():
+                if isinstance(value, dict) and not any(k in value for k in ["min", "max", "value", "presets", "choices"]):
+                    # ネストされた辞書（例: ego_vehicle, oncoming_vehicle）
+                    actor_params = {}
+                    for param_key, param_value in value.items():
+                        param_def = convert_expected_value(param_key, param_value)
+                        if param_def:
+                            actor_params[param_key] = param_def
+                    if actor_params:
+                        parameter_space[key] = actor_params
+                else:
+                    # 直接のパラメータ
+                    param_def = convert_expected_value(key, value)
+                    if param_def:
+                        if prefix:
+                            if prefix not in parameter_space:
+                                parameter_space[prefix] = {}
+                            parameter_space[prefix][key] = param_def
+                        else:
+                            parameter_space[key] = param_def
+
+        # 各Layerを処理
+        for layer_name, layer_data in pegasus_analysis.items():
+            if not isinstance(layer_data, dict):
+                continue
+
+            # Layer 4: Moving Objects（最重要）
+            if layer_name == "layer_4_objects":
+                process_layer(layer_data)
+
+            # Layer 5: Environment
+            elif layer_name == "layer_5_environment":
+                process_layer(layer_data, prefix="environment")
+
+            # Layer 6: Digital Information
+            elif layer_name == "layer_6_digital":
+                process_layer(layer_data)
+
+        return parameter_space
 
     def list_logical_scenarios(self, parent_abstract_uuid: Optional[str] = None) -> List[Dict[str, str]]:
         """論理シナリオの一覧を取得"""

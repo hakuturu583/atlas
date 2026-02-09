@@ -132,9 +132,9 @@ Town10HD_Optで利用可能な車両（2026年2月時点）：
    - フレームレート: 20 FPS
    - 出力: `data/videos/{{logical_uuid}}_{{parameter_uuid}}.mp4`
 
-## ⚠️ 重要: Pythonスクリプトの使用
+## ⚠️ 重要: ScenarioManagerの使用
 
-**UUID生成とJSON管理は`scripts/scenario_manager.py`を使用してください**。
+**UUID生成とJSON管理は必ず`scripts/scenario_manager.py`を使用してください**。
 
 このスキルの各Phaseは、以下のPythonスクリプトを使用して自動化されます：
 
@@ -144,200 +144,388 @@ from scripts.scenario_manager import ScenarioManager
 manager = ScenarioManager()
 
 # Phase 1: 抽象シナリオ作成
-abstract_uuid = manager.create_abstract_scenario(...)
+abstract_uuid = manager.create_abstract_scenario(
+    name="シナリオ名",
+    description="詳細な説明",
+    original_prompt="ユーザーの元の要件",
+    environment={...},
+    actors=[...],
+    scenario_type="scenario_type"
+)
 
-# Phase 2: 論理シナリオ作成
-logical_uuid = manager.create_logical_scenario(parent_abstract_uuid=abstract_uuid, ...)
+# Phase 2: 論理シナリオ作成（分布情報のみ）
+logical_uuid = manager.create_logical_scenario(
+    parent_abstract_uuid=abstract_uuid,
+    name="論理シナリオ名",
+    description="パラメータ空間の説明",
+    parameter_space={
+        "actor_id": {
+            "param_name": {
+                "type": "float",
+                "unit": "km/h",
+                "distribution": "uniform",
+                "min": 20.0,
+                "max": 40.0,
+                "description": "パラメータの説明"
+            }
+        }
+    }
+)
 
-# Phase 3: パラメータ作成
-parameter_uuid = manager.create_parameters(logical_uuid=logical_uuid, ...)
+# Phase 3: パラメータサンプリング（具体値を生成）
+parameter_uuid = manager.sample_parameters(
+    logical_uuid=logical_uuid,
+    carla_config={
+        "host": "localhost",
+        "port": 2000,
+        "map": "Town10HD_Opt",
+        "vehicle_type": "vehicle.taxi.ford"
+    },
+    seed=42  # 再現性のため（オプション）
+)
 
-# Phase 4実行後: 実行トレース作成
-manager.create_execution_trace(logical_uuid=logical_uuid, parameter_uuid=parameter_uuid, ...)
+# Phase 3: サンプリングされたパラメータを取得
+params = manager.get_parameters(logical_uuid, parameter_uuid)
+# params["sampled_values"] に具体値が入っている
+
+# Phase 5: 実行トレース作成
+manager.create_execution_trace(
+    logical_uuid=logical_uuid,
+    parameter_uuid=parameter_uuid,
+    python_file=f"scenarios/{logical_uuid}.py",
+    command="実行コマンド",
+    exit_code=0,
+    status="success"
+)
 ```
 
-詳細は`scripts/README_scenario_manager.md`を参照してください。
+詳細は`docs/DATA_MODEL.md`を参照してください。
 
 ---
 
 ## ワークフロー
 
-### Phase 1: 要件分析と抽象シナリオ生成
+### Phase 0: 自然言語シナリオ記録とPEGASUS分析
 
-**目的**: ユーザーの自然言語要件を構造化された抽象シナリオに変換
+**目的**: ユーザーの要件を記録し、PEGASUS 6 Layerで構造化分析
 
 **手順**:
 
-1. **要件の受け取り**
-   - ユーザーからの自然言語要件を確認
-   - 例: "高速道路で前方車両を追従するシナリオ"
+1. **自然言語シナリオの記録**
+   - **ScenarioManagerを使用**: `manager.create_natural_scenario()`を呼び出し
+   - ユーザーの元の要件をそのまま記録
 
-2. **不明点の確認**
-   - `AskUserQuestion`ツールを使用して不明点を質問
+   ```python
+   from scripts.scenario_manager import ScenarioManager
+
+   manager = ScenarioManager()
+   natural_uuid = manager.create_natural_scenario(
+       prompt="市街地交差点で死角から車両が突然飛び出してくる危険なシナリオ",
+       user_metadata={
+           "source": "user_input",
+           "context": "危険シナリオのテスト"
+       }
+   )
+   ```
+
+2. **PEGASUS 6 Layer分析**
+   - 自然言語要件をPEGASUS 6 Layerの観点から分析
+   - 各Layerについて以下を抽出:
+     - **description**: 自然言語での説明
+     - **expected_values**: 期待される値の範囲や選択肢（パラメータ空間のヒント）
+     - **carla_mapping**: CARLAでの実装方法
+
+   **PEGASUS 6 Layer**:
+   - **Layer 1 (Road)**: 道路タイプ、トポロジー、レーン数
+   - **Layer 2 (Infrastructure)**: 信号機、標識、道路標示
+   - **Layer 3 (Temporary Manipulation)**: 工事、障害物、視界遮蔽
+   - **Layer 4 (Moving Objects)**: 車両、歩行者、マニューバー
+   - **Layer 5 (Environment)**: 天候、時間帯、路面状態
+   - **Layer 6 (Digital Information)**: センサー、V2X通信
+
+3. **PEGASUS分析結果の記録**
+   - **ScenarioManagerを使用**: `manager.create_pegasus_analysis()`を呼び出し
+
+   ```python
+   pegasus_uuid = manager.create_pegasus_analysis(
+       natural_uuid=natural_uuid,
+       analysis={
+           "layer_1_road": {
+               "description": "市街地T字路/十字路交差点",
+               "expected_values": {
+                   "road_type": ["urban_intersection", "T_junction"],
+                   "lane_count": [2, 3]
+               },
+               "carla_mapping": {
+                   "map": "Town10HD_Opt",
+                   "road_features": ["intersection"]
+               }
+           },
+           "layer_4_objects": {
+               "description": "2台の車両（自車と飛び出し車両）",
+               "expected_values": {
+                   "ego_vehicle": {
+                       "initial_speed": {"min": 40.0, "max": 50.0, "unit": "km/h"}
+                   },
+                   "oncoming_vehicle": {
+                       "acceleration": {"min": 3.0, "max": 5.0, "unit": "m/s²"}
+                   }
+               }
+           },
+           # ... 他のLayer
+       },
+       criticality={
+           "level": "high",
+           "factors": ["occlusion", "sudden_maneuver"]
+       }
+   )
+   ```
+
+### Phase 1: 抽象シナリオ生成
+
+**目的**: PEGASUS分析結果を基に構造化された抽象シナリオを生成
+
+**手順**:
+
+1. **不明点の確認**
+   - `AskUserQuestion`ツールを使用して不明点を質問（必要に応じて）
    - 質問例:
      - 車両台数は？（デフォルト: 2台）
-     - 追従距離は？（デフォルト: 20m）
      - シナリオの継続時間は？（デフォルト: 10秒）
 
-3. **抽象シナリオの生成**
-   - **UUID生成**: `uuid.uuid4()`で一意なIDを生成
-   - MCPツール`generate_abstract_scenario`を呼び出し
-   - 生成内容:
-     - `uuid`: 抽象シナリオの一意なID
+2. **抽象シナリオの生成**
+   - **ScenarioManagerを使用**: `manager.create_abstract_scenario()`を呼び出し
+   - **PEGASUS分析からの情報抽出**:
+     - Layer 1 → environment.location_type
+     - Layer 4 → actors
+     - Layer 5 → environment (weather, time_of_day)
+   - 必要な情報:
      - `name`: シナリオの短い名前
-     - `description`: シナリオの概要
-     - `original_prompt`: ユーザーの元の要件
-     - `actors`: アクターのリスト（最低1台は`is_autonomous_stack: true`）
-     - `maneuvers`: 操作・動作の列挙
-     - `created_at`: 生成日時（ISO 8601形式）
+     - `description`: シナリオの詳細な説明
+     - `original_prompt`: ユーザーの元の自然言語要件（**トレーサビリティ**）
+     - `natural_scenario_uuid`: 自然言語シナリオUUID（**トレーサビリティ**）
+     - `pegasus_analysis_uuid`: PEGASUS分析UUID（**トレーサビリティ**）
+     - `pegasus_layers`: PEGASUS Layerの要約
+     - `environment`: 環境設定（PEGASUS Layer 1, 5から）
+     - `actors`: アクターのリスト（PEGASUS Layer 4から）
+     - `scenario_type`: シナリオタイプ
+     - `criticality`: 危険度レベル（PEGASUS分析から）
 
-4. **JSONファイルに保存**
-   - `data/scenarios/abstract_{uuid}.json`として保存
-   - トレーサビリティのため永続化
+3. **Pythonコードで実行**
+   ```python
+   from scripts.scenario_manager import ScenarioManager
 
-5. **ユーザー確認**
-   - 生成された抽象シナリオをユーザーに提示
+   manager = ScenarioManager()
+
+   # PEGASUS分析から情報を抽出
+   abstract_uuid = manager.create_abstract_scenario(
+       name="交差点死角飛び出しシナリオ",
+       description="市街地交差点で死角から車両が突然飛び出してくる危険なシナリオ",
+       original_prompt="市街地交差点で死角から車両が突然飛び出してくる危険なシナリオ",
+       natural_scenario_uuid=natural_uuid,  # トレーサビリティ
+       pegasus_analysis_uuid=pegasus_uuid,  # トレーサビリティ
+       pegasus_layers={
+           "layer_1_road": "市街地T字路/十字路交差点",
+           "layer_2_infrastructure": "信号機なし、一時停止標識あり",
+           "layer_3_temporary": "建物・駐車車両による視界遮蔽",
+           "layer_4_objects": "2台の車両（自車と飛び出し車両）",
+           "layer_5_environment": "晴天、昼間、乾燥路面",
+           "layer_6_digital": "センサーベース認識（カメラ、LiDAR）"
+       },
+       environment={
+           "location_type": "urban_intersection",
+           "weather": "clear",
+           "time_of_day": "noon",
+           "road_condition": "dry",
+           "features": ["occlusion", "buildings"]
+       },
+       actors=[
+           {
+               "id": "ego_vehicle",
+               "type": "vehicle",
+               "role": "自動運転予定車両",
+               "is_autonomous_stack": True
+           },
+           {
+               "id": "oncoming_vehicle",
+               "type": "vehicle",
+               "role": "飛び出し車両",
+               "is_autonomous_stack": False
+           }
+       ],
+       scenario_type="intersection_occlusion_hazard",
+       criticality="high"
+   )
+
+   print(f"抽象シナリオUUID: {abstract_uuid}")
+   ```
+
+4. **ユーザー確認**
+   - 生成された抽象シナリオのUUIDとパスをユーザーに提示
+   - ファイルパス: `data/scenarios/abstract_{abstract_uuid}.json`
+   - PEGASUS Layerとの対応を表示
    - 承認を得る
 
-**出力例**:
-```json
-{
-  "uuid": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
-  "name": "highway_follow",
-  "description": "高速道路で前方車両を20m間隔で追従するシナリオ",
-  "original_prompt": "高速道路で前方車両を追従するシナリオ",
-  "created_at": "2026-02-06T23:50:00Z",
-  "actors": [
-    {
-      "id": "ego_vehicle",
-      "role": "自動運転スタック予定",
-      "type": "vehicle",
-      "is_autonomous_stack": true
-    },
-    {
-      "id": "lead_vehicle",
-      "role": "前方車両",
-      "type": "vehicle",
-      "is_autonomous_stack": false
-    }
-  ],
-  "maneuvers": [
-    {
-      "actor": "lead_vehicle",
-      "action": "一定速度で走行",
-      "duration": "10s"
-    },
-    {
-      "actor": "ego_vehicle",
-      "action": "前方車両を追従",
-      "duration": "10s",
-      "conditions": ["距離を20m維持"]
-    }
-  ]
-}
-```
-
-**ファイルパス**: `data/scenarios/abstract_a1b2c3d4-e5f6-4789-a012-3456789abcde.json`
+**重要**: UUIDは自動生成され、ファイルも自動保存されます。トレーサビリティが完全に保たれます。
 
 ### Phase 2: 論理シナリオ生成
 
-**目的**: 抽象シナリオからOpenDRIVE非依存の論理シナリオを生成
+**目的**: PEGASUS分析の`expected_values`からパラメータ空間を抽出し、論理シナリオを生成
+
+**🚨 重要**: 論理シナリオには**分布情報のみ**を記録し、具体値は含めないこと（トレーサビリティ確保）
 
 **手順**:
 
-1. **論理シナリオの生成**
-   - **UUID生成**: `uuid.uuid4()`で新しいUUIDを生成（論理シナリオ用）
-   - MCPツール`generate_logical_scenario`を呼び出し
-   - OpenDRIVE非依存の記述を作成:
-     - `uuid`: 論理シナリオの一意なID
-     - `parent_abstract_uuid`: 親の抽象シナリオUUID（**トレーサビリティ**）
-     - `name`: シナリオ名（抽象シナリオから継承）
-     - `description`: 詳細な説明
-     - `map_requirements`: 地図の要件（道路タイプ、レーン数など）
-     - `initial_conditions`: 初期状態（symbolic location）
-     - `events`: イベント列（時刻とアクション）
-     - `created_at`: 生成日時
+1. **PEGASUS分析からパラメータ空間を抽出**
+   - **Layer 4 (Objects)**の`expected_values`からパラメータを抽出:
+     - 初速度: `ego_vehicle.initial_speed` → `{"min": 40.0, "max": 50.0}`
+     - 加速度: `oncoming_vehicle.acceleration` → `{"min": 3.0, "max": 5.0}`
+     - トリガー距離: `expected_values`から推定
+   - **Layer 5 (Environment)**からパラメータを抽出:
+     - 天候: `weather` → `["ClearNoon", "CloudyNoon"]` → `choice`または`constant`
+   - **Layer 6 (Digital)**からカメラ・センサー設定を抽出
 
-2. **JSONファイルに保存**
-   - `data/scenarios/logical_{uuid}.json`として保存
-   - `parent_abstract_uuid`により親子関係を保持
+2. **パラメータ空間の設計**
+   - 各パラメータに以下を定義:
+     - `type`: データ型（`float`, `int`, `string`）
+     - `unit`: 単位（`km/h`, `m`, `s`など）
+     - `distribution`: 分布タイプ（`uniform`, `normal`, `choice`, `constant`）
+     - 分布に応じたフィールド（`min/max`, `mean/std`, `choices`, `value`）
+     - `description`: パラメータの説明
+
+**PEGASUS → パラメータ空間のマッピング例**:
+
+| PEGASUS Layer | expected_values | parameter_space |
+|---------------|-----------------|-----------------|
+| Layer 4: `ego_vehicle.initial_speed: {min: 40, max: 50}` | `{"min": 40.0, "max": 50.0, "unit": "km/h"}` | `{"distribution": "uniform", "min": 40.0, "max": 50.0}` |
+| Layer 5: `weather: ["ClearNoon", "CloudyNoon"]` | `["ClearNoon", "CloudyNoon"]` | `{"distribution": "choice", "choices": [...]}` |
+| Layer 6: `camera.fov: 90` | `90` | `{"distribution": "constant", "value": 90}` |
+
+2. **Pythonコードで実行（🆕 自動導出）**
+   ```python
+   from scripts.scenario_manager import ScenarioManager
+   import json
+
+   manager = ScenarioManager()
+
+   # 🆕 PEGASUS分析からparameter_spaceを自動導出
+   pegasus_file = f"data/scenarios/pegasus_{pegasus_uuid}.json"
+   with open(pegasus_file) as f:
+       pegasus_data = json.load(f)
+
+   parameter_space = manager.derive_parameter_space_from_pegasus(
+       pegasus_data['analysis']
+   )
+
+   # 論理シナリオを作成（parameter_spaceは自動導出済み）
+   logical_uuid = manager.create_logical_scenario(
+       parent_abstract_uuid=abstract_uuid,
+       name="highway_follow_logical",
+       description="PEGASUS分析から自動導出されたパラメータ空間",
+       parameter_space=parameter_space
+   )
+
+   print(f"論理シナリオUUID: {logical_uuid}")
+   print("✅ parameter_spaceはPEGASUS分析から自動導出されました")
+   print(f"✅ 導出されたパラメータ数: {sum(len(v) if isinstance(v, dict) else 1 for v in parameter_space.values())}")
+   ```
+
+   **重要**: `derive_parameter_space_from_pegasus()`が自動的に以下を行います：
+   - Layer 4の`expected_values` → 各アクターのパラメータ
+   - Layer 5の`expected_values` → environment パラメータ
+   - Layer 6の`expected_values` → camera, simulation パラメータ
+   - 範囲値（`min/max`） → `distribution: uniform`
+   - 固定値（`value`） → `distribution: constant`
+   - 選択肢（`choices/presets`） → `distribution: choice`
 
 3. **ユーザー確認**
-   - 生成された論理シナリオをユーザーに提示
-   - 承認を得る
+   - 生成された論理シナリオのUUIDとパスをユーザーに提示
+   - ファイルパス: `data/scenarios/logical_{logical_uuid}.json`
+   - パラメータ空間が適切か確認
 
-**出力例**:
-```json
-{
-  "uuid": "550e8400-e29b-41d4-a716-446655440000",
-  "parent_abstract_uuid": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
-  "name": "highway_follow",
-  "description": "高速道路で前方車両を20m間隔で追従する論理シナリオ",
-  "created_at": "2026-02-06T23:51:00Z",
-  "map_requirements": {
-    "road_type": "highway",
-    "lanes": 3,
-    "length_min": 500
-  },
-  "initial_conditions": {
-    "ego_vehicle": {
-      "location": "highway_lane_2",
-      "speed": 50.0,
-      "distance_behind_lead": 20.0
-    },
-    "lead_vehicle": {
-      "location": "highway_lane_2_front",
-      "speed": 80.0
-    }
-  },
-  "events": [
-    {
-      "time": 0.0,
-      "type": "start_scenario"
-    },
-    {
-      "time": 0.0,
-      "type": "lead_vehicle_set_constant_speed",
-      "speed": 80.0
-    },
-    {
-      "time": 0.0,
-      "type": "ego_vehicle_follow_lead",
-      "target_distance": 20.0
-    },
-    {
-      "time": 10.0,
-      "type": "end_scenario"
-    }
-  ]
-}
-```
+**サポートする分布タイプ**:
+- `constant`: 固定値（`value`フィールド必須）
+- `uniform`: 一様分布（`min`, `max`フィールド必須）
+- `normal`: 正規分布（`mean`, `std`フィールド必須）
+- `choice`: 選択肢（`choices`フィールド必須）
 
-**ファイルパス**: `data/scenarios/logical_550e8400-e29b-41d4-a716-446655440000.json`
+**重要**: `speed: 50.0`のような具体値は入れないこと。代わりに`"distribution": "constant", "value": 50.0`と記述する。
 
-**トレーサビリティ**:
-- `parent_abstract_uuid`を読めば、どの抽象シナリオから生成されたかがわかる
-- `data/scenarios/abstract_a1b2c3d4-e5f6-4789-a012-3456789abcde.json`を参照可能
+### Phase 3: パラメータサンプリングとPython実装生成
 
-### Phase 3: Python実装生成と具体パラメータ作成
-
-**目的**: 論理シナリオからCARLA Python実装と具体的なパラメータファイルを生成
+**目的**: 論理シナリオからパラメータをサンプリングし、CARLA Python実装を生成
 
 **手順**:
 
-1. **Python実装の生成**
-   - 論理シナリオからPythonコードを直接生成
+1. **パラメータのサンプリング**
+   - **ScenarioManagerを使用**: `manager.sample_parameters()`を呼び出し
+   - 論理シナリオのparameter_spaceから具体値を生成
+   - 乱数シード（seed）を指定して再現性を確保（オプション）
+
+   ```python
+   from scripts.scenario_manager import ScenarioManager
+
+   manager = ScenarioManager()
+
+   # パラメータをサンプリング（具体値を生成）
+   parameter_uuid = manager.sample_parameters(
+       logical_uuid=logical_uuid,
+       carla_config={
+           "host": "localhost",
+           "port": 2000,
+           "map": "Town10HD_Opt",
+           "vehicle_type": "vehicle.taxi.ford"
+       },
+       seed=42  # 再現性のため（オプション）
+   )
+
+   # サンプリングされたパラメータを取得
+   params = manager.get_parameters(logical_uuid, parameter_uuid)
+
+   # params["sampled_values"] に具体値が入っている
+   # 例: params["sampled_values"]["ego_vehicle"]["initial_speed"] = 45.2
+   ```
+
+2. **Python実装の生成**
    - **ファイル名**: 論理シナリオの`uuid`を使用
    - `scenarios/{logical_uuid}.py`として保存
    - ファイル内に`logical_uuid`をコメントで記録
+   - コマンドライン引数で`logical_uuid`と`param_uuid`を受け取る
    - 要件:
      - CARLA Python APIを使用
      - **🚨 CRITICAL: `opendrive_utils`ライブラリを必ず使用**（詳細は下記）
-     - コマンドライン引数 `--params` でパラメータファイルを受け取る
      - 同期モード設定（オプション）
-     - カメラ記録（オプション、imageio使用）
-     - Rerun統合（オプション）
+     - スペクターカメラ配置と動画記録（imageio使用、**必須**）
      - try-finally でクリーンアップ
+
+3. **Python実装のコマンドライン引数**
+   ```python
+   import argparse
+   from scripts.scenario_manager import ScenarioManager
+
+   def main():
+       parser = argparse.ArgumentParser()
+       parser.add_argument('--logical-uuid', required=True, help='論理シナリオUUID')
+       parser.add_argument('--param-uuid', required=True, help='パラメータUUID')
+       args = parser.parse_args()
+
+       # ScenarioManagerからパラメータを取得
+       manager = ScenarioManager()
+       params = manager.get_parameters(args.logical_uuid, args.param_uuid)
+
+       # sampled_valuesから具体値を取得
+       ego_speed = params['sampled_values']['ego_vehicle']['initial_speed']
+       carla_config = params['carla_config']
+       output_video = params['output']['mp4_file']
+
+       # CARLAシミュレーション実行
+       run_simulation(params)
+   ```
+
+4. **実行コマンド**
+   ```bash
+   uv run python scenarios/{logical_uuid}.py --logical-uuid {logical_uuid} --param-uuid {param_uuid}
+   ```
 
 ---
 
@@ -895,33 +1083,54 @@ opendrive_utilsを使う場合、パラメータファイルには以下を含�
 - `parameter_uuid`: どのパラメータセットで実行したか
 - 同じ論理シナリオを異なるパラメータで複数回実行可能
 
-### Phase 5: トレース保存（オプション）
+### Phase 5: 実行トレース保存
 
-**目的**: 抽象→論理→実装の階層関係をJSONに保存
+**目的**: シナリオ実行の記録。抽象→論理→パラメータ→実装の完全なトレーサビリティを確保
 
 **手順**:
 
-1. **トレース情報の作成**
-   - シナリオメタデータを構築:
-     - `id`: シナリオID
-     - `name`: シナリオ名
-     - `description`: 概要
-     - `trace.original_prompt`: ユーザーの元の要件
-     - `trace.abstract_scenario`: Phase 1の出力
-     - `trace.logical_scenario`: Phase 2の出力
-     - `trace.implementation`: 実行情報（試行回数、エラー、最終ステータス）
-   - `python_file`: Pythonファイルパス
-   - `rerun_file`: .rrdファイルパス（オプション）
-   - `video_file`: .mp4ファイルパス（オプション）
+1. **実行トレースの作成**
+   - **ScenarioManagerを使用**: `manager.create_execution_trace()`を呼び出し
+   - 実行結果を記録（成功/失敗、終了コード）
 
-2. **保存**
-   - `data/scenarios/{scenario_id}.json`に保存
+   ```python
+   from scripts.scenario_manager import ScenarioManager
+
+   manager = ScenarioManager()
+
+   # シナリオを実行
+   import subprocess
+   python_file = f"scenarios/{logical_uuid}.py"
+   command = f"uv run python {python_file} --logical-uuid {logical_uuid} --param-uuid {parameter_uuid}"
+
+   result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
+   # 実行トレースを記録
+   trace_file = manager.create_execution_trace(
+       logical_uuid=logical_uuid,
+       parameter_uuid=parameter_uuid,
+       python_file=python_file,
+       command=command,
+       exit_code=result.returncode,
+       status="success" if result.returncode == 0 else "failed"
+   )
+
+   print(f"実行トレースを保存: {trace_file}")
+   ```
+
+2. **トレーサビリティの自動記録**
+   - 抽象シナリオUUID（parent_abstract_uuid）
+   - 論理シナリオUUID
+   - パラメータUUID
+   - Python実装ファイルパス
+   - 実行コマンド
+   - 出力ファイルパス（動画、RRD）
 
 3. **UI表示**
    - UIがある場合、シナリオ一覧を更新
    - ユーザーにシナリオが生成されたことを通知
 
-**実行トレースファイル例** (`data/scenarios/execution_{logical_uuid}_{parameter_uuid}.json`):
+**自動生成される実行トレースファイル** (`data/scenarios/execution_{logical_uuid}_{parameter_uuid}.json`):
 ```json
 {
   "execution_uuid": "abc12345-6789-0123-4567-890abcdef012",

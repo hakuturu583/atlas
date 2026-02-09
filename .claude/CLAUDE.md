@@ -7,7 +7,7 @@
 1. [プロジェクト概要](#プロジェクト概要)
 2. [アーキテクチャ](#アーキテクチャ)
 3. [ディレクトリ構造](#ディレクトリ構造)
-4. [MCPツールとプラグイン](#mcpツールとプラグイン)
+4. [スキル](#スキル)
 5. [スクリプトとツール](#スクリプトとツール)
 6. [開発ワークフロー](#開発ワークフロー)
 7. [起動・停止](#起動停止)
@@ -29,14 +29,12 @@ CARLAシミュレーター用のシナリオ生成・管理ツールで、自然
    - 右ペイン: Claude Codeターミナル（xterm.js + WebSocket）
 
 2. **Claude Code統合**
-   - MCPサーバー経由でUI制御
-   - atlas-plugin による画面遷移とシナリオ管理
+   - atlas-plugin スキルによる画面遷移とシナリオ管理
    - WebSocket経由でターミナル統合
 
-3. **Dockerサンドボックス**
-   - C++でCARLAシナリオを実装・実行
-   - conan/gcc11ベース
-   - libcarla + rerun_carla_sdk統合
+3. **Python実装**
+   - CARLA Python APIを使ったシナリオ実装
+   - imageioによる動画記録
 
 4. **rerun.io可視化**
    - 3D可視化ビューア内蔵
@@ -47,10 +45,7 @@ CARLAシミュレーター用のシナリオ生成・管理ツールで、自然
 - **バックエンド**: Python 3.10+, FastAPI, uvicorn
 - **フロントエンド**: htmx, Tailwind CSS, xterm.js
 - **パッケージ管理**: uv (Pythonパッケージマネージャー)
-- **コンテナ**: Docker, Docker Compose
-- **ビルドシステム**: CMake, Conan 2.x
-- **通信**: WebSocket (Flask↔Terminal, Flask↔UI)
-- **MCP**: Model Context Protocol (Claude Code統合)
+- **通信**: WebSocket (Terminal, UI)
 
 ---
 
@@ -75,37 +70,20 @@ CARLAシミュレーター用のシナリオ生成・管理ツールで、自然
 │  │  - views.py      : HTML テンプレートレンダリング    │    │
 │  │  - api.py        : REST API エンドポイント          │    │
 │  │  - websocket.py  : WebSocket (Terminal, UI State)   │    │
-│  │  - mcp_bridge.py : MCP統合                          │    │
 │  └─────────────────────────────────────────────────────┘    │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │ app/services/                                       │    │
 │  │  - ui_state_manager.py   : UI状態管理              │    │
 │  │  - scenario_manager.py   : シナリオ管理            │    │
+│  │  - carla_manager.py      : CARLA起動管理           │    │
 │  └─────────────────────────────────────────────────────┘    │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ stdio
-┌──────────────────────────▼──────────────────────────────────┐
-│              MCP Server (app/mcp/server.py)                  │
-│  - change_view(view)      : 画面切り替え                     │
-│  - get_current_view()     : 現在の画面取得                   │
-│  - list_scenarios()       : シナリオ一覧                     │
-│  - get_scenario(id)       : シナリオ詳細                     │
-└─────────────────────────────────────────────────────────────┘
-                           ▲
-                           │ Claude Code Plugin
-┌──────────────────────────┴──────────────────────────────────┐
-│         Claude Code (右ペイン内で実行)                       │
-│  - Working directory: /home/masaya/workspace/atlas           │
-│  - .claude/atlas-plugin 自動読み込み                         │
-│  - settings.local.json 権限適用                              │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│            Dockerサンドボックス (sandbox/)                   │
-│  - C++でCARLAシナリオ実装                                    │
-│  - libcarla + rerun_carla_sdk                                │
-│  - output/ に .rrd ファイル出力                              │
-│  - host network でlocalhost:2000 のCARLAに接続              │
+│         Claude Code (右ペイン内で実行)                       │
+│  - Working directory: /home/masaya/workspace/atlas           │
+│  - .claude/atlas-plugin スキル自動読み込み                   │
+│  - settings.local.json 権限適用                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -118,7 +96,7 @@ CARLAシミュレーター用のシナリオ生成・管理ツールで、自然
 
 2. **Claude Code操作フロー**:
    ```
-   Claude Code → MCP Tools → FastAPI → UIStateManager → WebSocket → ブラウザ更新
+   Claude Code → スキル実行 → FastAPI経由でUI更新
    ```
 
 3. **ターミナル通信フロー**:
@@ -246,33 +224,11 @@ atlas/                              ← プロジェクトルート（working di
 
 ---
 
-## MCPツールとプラグイン
+## スキル
 
-### atlas-plugin
+**重要**: スキルは `.claude/skills/<skill-name>/SKILL.md` として配置されています。
 
-`.claude/atlas-plugin/` にあるプラグインは、MCPサーバーを通じて以下のツールを提供します。
-
-#### MCPサーバー設定 (plugin.json)
-
-```json
-{
-  "name": "atlas-plugin",
-  "version": "0.1.0",
-  "mcp": {
-    "servers": {
-      "atlas": {
-        "type": "stdio",
-        "command": "./run_mcp_server.sh",
-        "cwd": "${CLAUDE_PLUGIN_ROOT}/../.."
-      }
-    }
-  }
-}
-```
-
-#### 利用可能なMCPツール
-
-1. **change_view(view: str)**
+### scenario-writer
    - UI画面を切り替える
    - パラメータ:
      - `view`: 画面名 ("home", "scenario_list", "scenario_analysis", "rerun_viewer")

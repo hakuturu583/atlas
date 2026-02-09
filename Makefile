@@ -1,4 +1,4 @@
-.PHONY: help run dev mcp shutdown clean install test carla-launch carla-stop carla-status carla-config fiftyone fiftyone-batch fiftyone-list fiftyone-stop cleanup-dry cleanup cleanup-full
+.PHONY: help run dev shutdown clean install test carla-launch carla-stop carla-status carla-config fiftyone fiftyone-batch fiftyone-list fiftyone-stop cleanup-dry cleanup cleanup-full
 
 # デフォルトターゲット
 .DEFAULT_GOAL := help
@@ -26,10 +26,6 @@ run: install ## 本番モードで起動
 dev: install ## 開発モードで起動（auto-reload）
 	@echo "🔧 Starting ATLAS (Development Mode)..."
 	@./run_dev.sh
-
-mcp: install ## MCPサーバーを起動
-	@echo "🔌 Starting MCP server..."
-	@./run_mcp_server.sh
 
 shutdown: ## すべてをシャットダウン
 	@./shutdown.sh
@@ -123,9 +119,6 @@ status: ## システム状態を確認
 	@echo ""
 	@echo "Flask Application (port 8000):"
 	@lsof -ti:8000 >/dev/null 2>&1 && echo "  ✓ Running (PID: $$(lsof -ti:8000))" || echo "  ✗ Not running"
-	@echo ""
-	@echo "MCP Server:"
-	@pgrep -f "python -m app.mcp.server" >/dev/null 2>&1 && echo "  ✓ Running (PID: $$(pgrep -f 'python -m app.mcp.server'))" || echo "  ✗ Not running"
 	@echo ""
 	@echo "CARLA Server:"
 	@uv run python scripts/carla_launcher.py status 2>/dev/null | grep -q "Running" && echo "  ✓ Running" || echo "  ✗ Not running"
