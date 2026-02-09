@@ -120,7 +120,7 @@ class ScenarioManager:
         scenario_type: str,
         natural_scenario_uuid: Optional[str] = None,
         pegasus_analysis_uuid: Optional[str] = None,
-        pegasus_layers: Optional[Dict[str, str]] = None,
+        pegasus_layers: Optional[Dict[str, List[str]]] = None,
         criticality: Optional[str] = None
     ) -> str:
         """
@@ -135,7 +135,13 @@ class ScenarioManager:
             scenario_type: シナリオタイプ
             natural_scenario_uuid: 自然言語シナリオUUID（オプション）
             pegasus_analysis_uuid: PEGASUS分析UUID（オプション）
-            pegasus_layers: PEGASUS Layerの要約（オプション）
+            pegasus_layers: PEGASUS Layerの要約（配列形式、オプション）
+                - layer_1_road: 道路情報のリスト
+                - layer_2_infrastructure: インフラ情報のリスト
+                - layer_3_temporary: 一時的条件のリスト
+                - layer_4_objects: 物体情報のリスト
+                - layer_5_environment: 環境情報のリスト
+                - layer_6_digital: デジタル情報のリスト（現在は空配列）
             criticality: 危険度レベル（オプション）
 
         Returns:

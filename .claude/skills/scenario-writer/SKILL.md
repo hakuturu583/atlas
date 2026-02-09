@@ -305,7 +305,9 @@ manager.create_execution_trace(
      - `original_prompt`: ユーザーの元の自然言語要件（**トレーサビリティ**）
      - `natural_scenario_uuid`: 自然言語シナリオUUID（**トレーサビリティ**）
      - `pegasus_analysis_uuid`: PEGASUS分析UUID（**トレーサビリティ**）
-     - `pegasus_layers`: PEGASUS Layerの要約
+     - `pegasus_layers`: PEGASUS Layerの要約（**配列形式**）
+       - 各レイヤーは複数の条件を配列で表現
+       - `layer_6_digital`は現在空配列（将来対応）
      - `environment`: 環境設定（PEGASUS Layer 1, 5から）
      - `actors`: アクターのリスト（PEGASUS Layer 4から）
      - `scenario_type`: シナリオタイプ
@@ -325,12 +327,12 @@ manager.create_execution_trace(
        natural_scenario_uuid=natural_uuid,  # トレーサビリティ
        pegasus_analysis_uuid=pegasus_uuid,  # トレーサビリティ
        pegasus_layers={
-           "layer_1_road": "市街地T字路/十字路交差点",
-           "layer_2_infrastructure": "信号機なし、一時停止標識あり",
-           "layer_3_temporary": "建物・駐車車両による視界遮蔽",
-           "layer_4_objects": "2台の車両（自車と飛び出し車両）",
-           "layer_5_environment": "晴天、昼間、乾燥路面",
-           "layer_6_digital": "センサーベース認識（カメラ、LiDAR）"
+           "layer_1_road": ["市街地T字路/十字路交差点", "2車線", "車線幅3.5m"],
+           "layer_2_infrastructure": ["信号機なし", "一時停止標識あり"],
+           "layer_3_temporary": ["建物による視界遮蔽", "駐車車両による視界遮蔽"],
+           "layer_4_objects": ["ego車両（自動運転予定）", "oncoming車両（飛び出し）"],
+           "layer_5_environment": ["晴天", "昼間", "乾燥路面"],
+           "layer_6_digital": []  # 現在は空配列
        },
        environment={
            "location_type": "urban_intersection",
