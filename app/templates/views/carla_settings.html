@@ -1,0 +1,226 @@
+<div class="min-h-screen bg-gray-50 py-8 px-4">
+    <div class="max-w-3xl mx-auto">
+        <!-- ヘッダー -->
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold text-gray-900">CARLA設定</h1>
+            <p class="mt-2 text-gray-600">CARLAシミュレーターの起動設定を管理します</p>
+        </div>
+
+        <!-- CARLA状態表示 -->
+        <div class="bg-white shadow rounded-lg p-6 mb-6" id="carla-status">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">サーバー状態</h2>
+            <div class="flex items-center justify-between">
+                <div>
+                    <span class="text-sm text-gray-600">ステータス:</span>
+                    <span class="ml-2 px-3 py-1 rounded-full text-sm font-medium
+                        {% if carla_status.running %}
+                            bg-green-100 text-green-800
+                        {% else %}
+                            bg-gray-100 text-gray-800
+                        {% endif %}">
+                        {{ '実行中' if carla_status.running else '停止中' }}
+                    </span>
+                    {% if carla_status.pid %}
+                        <span class="ml-2 text-sm text-gray-500">(PID: {{ carla_status.pid }})</span>
+                    {% endif %}
+                </div>
+                <div class="space-x-2">
+                    {% if carla_status.running %}
+                        <button
+                            hx-post="/api/carla/stop"
+                            hx-target="#carla-status"
+                            hx-swap="outerHTML"
+                            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+                            停止
+                        </button>
+                    {% else %}
+                        <button
+                            hx-post="/api/carla/launch"
+                            hx-target="#carla-status"
+                            hx-swap="outerHTML"
+                            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            起動
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if carla_status.running and carla_status.memory_mb %}
+                <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="text-gray-600">メモリ使用量:</span>
+                        <span class="ml-2 font-medium">{{ '%.1f' | format(carla_status.memory_mb) }} MB</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">CPU使用率:</span>
+                        <span class="ml-2 font-medium">{{ '%.1f' | format(carla_status.cpu_percent) }}%</span>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- 設定フォーム -->
+        <form
+            hx-post="/api/carla/settings"
+            hx-target="#settings-feedback"
+            class="bg-white shadow rounded-lg p-6">
+
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">起動設定</h2>
+
+            <!-- CARLAパス -->
+            <div class="mb-4">
+                <label for="carla_path" class="block text-sm font-medium text-gray-700 mb-2">
+                    CARLAインストールディレクトリ
+                </label>
+                <input
+                    type="text"
+                    id="carla_path"
+                    name="carla_path"
+                    value="{{ settings.carla_path }}"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="/opt/carla-simulator">
+                <p class="mt-1 text-xs text-gray-500">CARLAがインストールされているディレクトリのパス</p>
+            </div>
+
+            <!-- 実行ファイル名 -->
+            <div class="mb-4">
+                <label for="executable_name" class="block text-sm font-medium text-gray-700 mb-2">
+                    実行ファイル名
+                </label>
+                <input
+                    type="text"
+                    id="executable_name"
+                    name="executable_name"
+                    value="{{ settings.executable_name }}"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="CarlaUE4.sh">
+                <p class="mt-1 text-xs text-gray-500">Windows: CarlaUE4.exe, Linux: CarlaUE4.sh</p>
+            </div>
+
+            <!-- ポート番号 -->
+            <div class="mb-4">
+                <label for="default_port" class="block text-sm font-medium text-gray-700 mb-2">
+                    デフォルトポート
+                </label>
+                <input
+                    type="number"
+                    id="default_port"
+                    name="default_port"
+                    value="{{ settings.default_port }}"
+                    min="1024"
+                    max="65535"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p class="mt-1 text-xs text-gray-500">CARLAサーバーが使用するポート番号（通常は2000）</p>
+            </div>
+
+            <!-- デフォルトマップ -->
+            <div class="mb-4">
+                <label for="default_map" class="block text-sm font-medium text-gray-700 mb-2">
+                    デフォルトマップ
+                </label>
+                <select
+                    id="default_map"
+                    name="default_map"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="Town01" {{ 'selected' if settings.default_map == 'Town01' }}>Town01</option>
+                    <option value="Town02" {{ 'selected' if settings.default_map == 'Town02' }}>Town02</option>
+                    <option value="Town03" {{ 'selected' if settings.default_map == 'Town03' }}>Town03</option>
+                    <option value="Town04" {{ 'selected' if settings.default_map == 'Town04' }}>Town04</option>
+                    <option value="Town05" {{ 'selected' if settings.default_map == 'Town05' }}>Town05</option>
+                    <option value="Town10HD" {{ 'selected' if settings.default_map == 'Town10HD' }}>Town10HD</option>
+                </select>
+            </div>
+
+            <!-- グラフィック品質 -->
+            <div class="mb-4">
+                <label for="quality_level" class="block text-sm font-medium text-gray-700 mb-2">
+                    グラフィック品質
+                </label>
+                <select
+                    id="quality_level"
+                    name="quality_level"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="Low" {{ 'selected' if settings.quality_level == 'Low' }}>Low</option>
+                    <option value="Medium" {{ 'selected' if settings.quality_level == 'Medium' }}>Medium</option>
+                    <option value="Epic" {{ 'selected' if settings.quality_level == 'Epic' }}>Epic</option>
+                </select>
+            </div>
+
+            <!-- 追加引数 -->
+            <div class="mb-4">
+                <label for="additional_args" class="block text-sm font-medium text-gray-700 mb-2">
+                    追加起動引数
+                </label>
+                <input
+                    type="text"
+                    id="additional_args"
+                    name="additional_args"
+                    value="{{ settings.additional_args }}"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="-RenderOffScreen -prefernvidia">
+                <p class="mt-1 text-xs text-gray-500">スペース区切りで追加の引数を指定（例: -RenderOffScreen -prefernvidia）</p>
+            </div>
+
+            <!-- タイムアウト -->
+            <div class="mb-4">
+                <label for="timeout" class="block text-sm font-medium text-gray-700 mb-2">
+                    起動タイムアウト（秒）
+                </label>
+                <input
+                    type="number"
+                    id="timeout"
+                    name="timeout"
+                    value="{{ settings.timeout }}"
+                    min="5"
+                    max="300"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p class="mt-1 text-xs text-gray-500">CARLAの起動を待機する最大時間</p>
+            </div>
+
+            <!-- 自動起動 -->
+            <div class="mb-6">
+                <label class="flex items-center">
+                    <input
+                        type="checkbox"
+                        id="auto_start"
+                        name="auto_start"
+                        {{ 'checked' if settings.auto_start }}
+                        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                    <span class="ml-2 text-sm text-gray-700">システム起動時にCARLAを自動起動</span>
+                </label>
+            </div>
+
+            <!-- フィードバック表示エリア -->
+            <div id="settings-feedback" class="mb-4"></div>
+
+            <!-- 保存ボタン -->
+            <div class="flex justify-end space-x-3">
+                <button
+                    type="button"
+                    hx-get="/views/home"
+                    hx-target="#main-content"
+                    hx-swap="innerHTML"
+                    class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    キャンセル
+                </button>
+                <button
+                    type="submit"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    設定を保存
+                </button>
+            </div>
+        </form>
+
+        <!-- 生成されるコマンドのプレビュー -->
+        <div class="mt-6 bg-gray-800 text-gray-100 rounded-lg p-6">
+            <h3 class="text-sm font-medium text-gray-300 mb-2">起動コマンドプレビュー:</h3>
+            <code class="text-sm font-mono">
+                {{ settings.get_executable_path() }}
+                -carla-rpc-port {{ settings.default_port }}
+                -carla-world {{ settings.default_map }}
+                -quality-level={{ settings.quality_level }}
+                {{ settings.additional_args }}
+            </code>
+        </div>
+    </div>
+</div>

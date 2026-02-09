@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/xterm.css">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        .split-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .left-pane {
+            flex: 1;
+            min-width: 0;
+            border-right: 2px solid #e5e7eb;
+            position: relative;
+        }
+
+        .right-pane {
+            width: 50%;
+            min-width: 400px;
+            background: #1e1e1e;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pane-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            letter-spacing: 0.025em;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 10;
+            height: 56px;
+            display: flex;
+            align-items: center;
+        }
+
+        /* タブスタイル */
+        .tabs-container {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex: 1;
+        }
+
+        .tab-button {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .tab-button:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .tab-button.active {
+            background: rgba(255, 255, 255, 0.35);
+            border-color: rgba(255, 255, 255, 0.5);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .content-container {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        .content-container.active {
+            display: block;
+        }
+
+        #graph-container {
+            width: 100%;
+            height: 100%;
+            background: #f9fafb;
+            position: relative;
+        }
+
+        /* ツールチップ */
+        .graph-tooltip {
+            position: absolute;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            pointer-events: none;
+            display: none;
+            max-width: 300px;
+            font-size: 0.875rem;
+        }
+
+        .graph-tooltip.active {
+            display: block;
+        }
+
+        .tooltip-header {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .tooltip-row {
+            margin: 0.25rem 0;
+            color: #4b5563;
+        }
+
+        .tooltip-label {
+            font-weight: 500;
+            color: #6b7280;
+            display: inline-block;
+            min-width: 60px;
+        }
+
+        .tooltip-value {
+            color: #1f2937;
+        }
+
+        .tooltip-type-badge {
+            display: inline-block;
+            padding: 0.125rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .tooltip-type-abstract {
+            background: #ddd6fe;
+            color: #5b21b6;
+        }
+
+        .tooltip-type-logical {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .tooltip-type-parameter {
+            background: #fed7aa;
+            color: #9a3412;
+        }
+
+        .fiftyone-container {
+            flex: 1;
+            width: 100%;
+            height: calc(100% - 56px);
+        }
+
+        .fiftyone-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .terminal-container {
+            flex: 1;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #terminal {
+            height: 100%;
+            padding: 8px;
+        }
+
+        /* xterm.js用のスタイル調整 */
+        .xterm {
+            height: 100% !important;
+            padding: 4px;
+        }
+
+        .xterm-viewport {
+            overflow-y: auto !important;
+        }
+
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            font-size: 1.125rem;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-right: 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 設定ボタン */
+        .settings-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .settings-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        /* モーダル */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .close-button {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #6b7280;
+            cursor: pointer;
+            padding: 0;
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.25rem;
+            transition: all 0.2s;
+        }
+
+        .close-button:hover {
+            background: #f3f4f6;
+            color: #1f2937;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        /* フォーム */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group.checkbox {
+            display: flex;
+            align-items: center;
+        }
+
+        .form-group.checkbox label {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .form-group.checkbox input[type="checkbox"] {
+            margin-right: 0.5rem;
+            cursor: pointer;
+        }
+
+        /* ボタン */
+        .button-group {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 0.625rem 1rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .btn-secondary:hover {
+            background: #e5e7eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="split-container">
+        <!-- 左ペイン: FiftyOne & Graph -->
+        <div class="left-pane">
+            <div class="pane-header">
+                <div class="tabs-container">
+                    <button id="tab-fiftyone" class="tab-button active">
+                        📊 FiftyOne
+                    </button>
+                    <button id="tab-graph" class="tab-button">
+                        🔗 関係性グラフ
+                    </button>
+                </div>
+            </div>
+
+            <!-- FiftyOneコンテンツ -->
+            <div id="content-fiftyone" class="fiftyone-container content-container active">
+                <iframe
+                    id="fiftyone-frame"
+                    class="fiftyone-iframe"
+                    src="http://localhost:5151"
+                    title="FiftyOne Dataset Viewer">
+                </iframe>
+            </div>
+
+            <!-- 関係性グラフコンテンツ -->
+            <div id="content-graph" class="content-container" style="height: calc(100% - 56px);">
+                <div id="graph-container">
+                    <div id="graph-tooltip" class="graph-tooltip"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右ペイン: Claude Code Terminal -->
+        <div class="right-pane">
+            <div class="pane-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>🤖 Claude Code Terminal</span>
+                <button id="settings-btn" class="settings-button">
+                    ⚙️ 設定
+                </button>
+            </div>
+            <div class="terminal-container">
+                <div id="terminal"></div>
+            </div>
+        </div>
+
+        <!-- 設定モーダル -->
+        <div id="settings-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>⚙️ CARLA設定</h2>
+                    <button id="close-modal" class="close-button">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="carla-settings-form">
+                        <div class="form-group">
+                            <label for="carla-path">CARLAパス</label>
+                            <input type="text" id="carla-path" name="carla_path" placeholder="/path/to/CARLA_0.10.0" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="carla-map">デフォルトマップ</label>
+                            <select id="carla-map" name="default_map">
+                                <option value="Town10HD_Opt">Town10HD_Opt</option>
+                                <option value="Town01">Town01</option>
+                                <option value="Town02">Town02</option>
+                                <option value="Town03">Town03</option>
+                                <option value="Town04">Town04</option>
+                                <option value="Town05">Town05</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="carla-port">ポート</label>
+                            <input type="number" id="carla-port" name="default_port" value="2000" min="2000" max="9999" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="quality-level">品質レベル</label>
+                            <select id="quality-level" name="quality_level">
+                                <option value="Low">Low</option>
+                                <option value="Epic">Epic</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group checkbox">
+                            <label>
+                                <input type="checkbox" id="render-offscreen" name="render_offscreen" checked />
+                                オフスクリーンレンダリング (-RenderOffScreen)
+                            </label>
+                        </div>
+
+                        <div class="form-group checkbox">
+                            <label>
+                                <input type="checkbox" id="auto-start" name="auto_start" />
+                                起動時にCARLAを自動起動
+                            </label>
+                        </div>
+
+                        <div class="button-group">
+                            <button type="button" id="save-settings" class="btn btn-primary">保存</button>
+                            <button type="button" id="cancel-settings" class="btn btn-secondary">キャンセル</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- xterm.js -->
+    <script src="/static/js/xterm.js"></script>
+    <script src="/static/js/xterm-addon-fit.js"></script>
+
+    <!-- Cytoscape.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+
+    <script>
+        // FiftyOneの読み込み確認
+        const fiftyoneFrame = document.getElementById('fiftyone-frame');
+        fiftyoneFrame.addEventListener('load', () => {
+            console.log('✓ FiftyOne loaded');
+        });
+
+        fiftyoneFrame.addEventListener('error', (e) => {
+            console.error('✗ FiftyOne failed to load:', e);
+            fiftyoneFrame.contentDocument.body.innerHTML =
+                '<div class="loading-indicator">' +
+                '<div>⚠️ FiftyOne is not running. Please start it with: <code>uv run python scripts/fiftyone_integration.py launch</code></div>' +
+                '</div>';
+        });
+
+        // ターミナルの初期化
+        const term = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            theme: {
+                background: '#1e1e1e',
+                foreground: '#d4d4d4',
+                cursor: '#ffffff',
+                cursorAccent: '#000000',
+                selection: '#264f78',
+                black: '#000000',
+                red: '#cd3131',
+                green: '#0dbc79',
+                yellow: '#e5e510',
+                blue: '#2472c8',
+                magenta: '#bc3fbc',
+                cyan: '#11a8cd',
+                white: '#e5e5e5',
+                brightBlack: '#666666',
+                brightRed: '#f14c4c',
+                brightGreen: '#23d18b',
+                brightYellow: '#f5f543',
+                brightBlue: '#3b8eea',
+                brightMagenta: '#d670d6',
+                brightCyan: '#29b8db',
+                brightWhite: '#ffffff'
+            },
+            allowTransparency: false,
+            scrollback: 10000,
+            convertEol: true
+        });
+
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+
+        const terminalContainer = document.getElementById('terminal');
+        term.open(terminalContainer);
+        fitAddon.fit();
+
+        // WebSocket接続
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/terminal`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('✓ WebSocket connected');
+
+            // ターミナルサイズを送信
+            ws.send(JSON.stringify({
+                type: 'resize',
+                rows: term.rows,
+                cols: term.cols
+            }));
+        };
+
+        ws.onmessage = (event) => {
+            term.write(event.data);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            term.write('\r\n\x1b[31mWebSocket connection error\x1b[0m\r\n');
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket closed');
+            term.write('\r\n\x1b[33mConnection closed. Please refresh the page.\x1b[0m\r\n');
+        };
+
+        // ターミナル入力をWebSocketに送信
+        term.onData((data) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'input',
+                    data: data
+                }));
+            }
+        });
+
+        // ウィンドウリサイズ時にターミナルをフィット
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+
+            // 新しいサイズをサーバーに通知
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'resize',
+                    rows: term.rows,
+                    cols: term.cols
+                }));
+            }
+        });
+
+        // 初期フィット
+        setTimeout(() => {
+            fitAddon.fit();
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'resize',
+                    rows: term.rows,
+                    cols: term.cols
+                }));
+            }
+        }, 100);
+
+        // タブ切り替え
+        const tabFiftyone = document.getElementById('tab-fiftyone');
+        const tabGraph = document.getElementById('tab-graph');
+        const contentFiftyone = document.getElementById('content-fiftyone');
+        const contentGraph = document.getElementById('content-graph');
+        let cy = null; // Cytoscapeインスタンス
+
+        // タブ切り替え関数
+        function switchTab(tabName) {
+            if (tabName === 'fiftyone') {
+                tabFiftyone.classList.add('active');
+                tabGraph.classList.remove('active');
+                contentFiftyone.classList.add('active');
+                contentGraph.classList.remove('active');
+            } else if (tabName === 'graph') {
+                tabFiftyone.classList.remove('active');
+                tabGraph.classList.add('active');
+                contentFiftyone.classList.remove('active');
+                contentGraph.classList.add('active');
+
+                // グラフが未初期化の場合は初期化
+                if (!cy) {
+                    initializeGraph();
+                }
+            }
+        }
+
+        // グラフ初期化
+        async function initializeGraph() {
+            try {
+                const response = await fetch('/api/scenarios/graph');
+                const data = await response.json();
+
+                cy = cytoscape({
+                    container: document.getElementById('graph-container'),
+                    elements: data.elements,
+                    style: [
+                        {
+                            selector: 'node',
+                            style: {
+                                'background-color': 'data(color)',
+                                'label': 'data(label)',
+                                'text-valign': 'center',
+                                'text-halign': 'center',
+                                'font-size': '12px',
+                                'width': '80px',
+                                'height': '80px',
+                                'text-wrap': 'wrap',
+                                'text-max-width': '70px'
+                            }
+                        },
+                        {
+                            selector: 'node[type="abstract"]',
+                            style: {
+                                'background-color': '#667eea',
+                                'shape': 'round-rectangle'
+                            }
+                        },
+                        {
+                            selector: 'node[type="logical"]',
+                            style: {
+                                'background-color': '#48bb78',
+                                'shape': 'ellipse'
+                            }
+                        },
+                        {
+                            selector: 'node[type="parameter"]',
+                            style: {
+                                'background-color': '#ed8936',
+                                'shape': 'diamond',
+                                'width': '70px',
+                                'height': '70px'
+                            }
+                        },
+                        {
+                            selector: 'edge',
+                            style: {
+                                'width': 2,
+                                'line-color': '#cbd5e0',
+                                'target-arrow-color': '#cbd5e0',
+                                'target-arrow-shape': 'triangle',
+                                'curve-style': 'bezier'
+                            }
+                        }
+                    ],
+                    layout: {
+                        name: 'breadthfirst',
+                        directed: true,
+                        padding: 50,
+                        spacingFactor: 1.5
+                    }
+                });
+
+                // ツールチップ要素
+                const tooltip = document.getElementById('graph-tooltip');
+
+                // マウスオーバーでツールチップ表示
+                cy.on('mouseover', 'node', function(evt) {
+                    const node = evt.target;
+                    const data = node.data();
+
+                    // ツールチップの内容を生成
+                    let typeName = '';
+                    let typeClass = '';
+                    if (data.type === 'abstract') {
+                        typeName = '抽象シナリオ';
+                        typeClass = 'tooltip-type-abstract';
+                    } else if (data.type === 'logical') {
+                        typeName = '論理シナリオ';
+                        typeClass = 'tooltip-type-logical';
+                    } else if (data.type === 'parameter') {
+                        typeName = 'パラメータセット';
+                        typeClass = 'tooltip-type-parameter';
+                    }
+
+                    let html = `<div class="tooltip-header">${data.label}</div>`;
+                    html += `<div class="tooltip-row"><span class="tooltip-type-badge ${typeClass}">${typeName}</span></div>`;
+
+                    if (data.description) {
+                        html += `<div class="tooltip-row"><span class="tooltip-label">説明:</span> <span class="tooltip-value">${data.description}</span></div>`;
+                    }
+                    if (data.created_at) {
+                        html += `<div class="tooltip-row"><span class="tooltip-label">作成日:</span> <span class="tooltip-value">${data.created_at}</span></div>`;
+                    }
+                    if (data.video_file) {
+                        html += `<div class="tooltip-row"><span class="tooltip-label">動画:</span> <span class="tooltip-value">${data.video_file}</span></div>`;
+                    }
+                    if (data.parameter_uuid) {
+                        html += `<div class="tooltip-row"><span class="tooltip-label">UUID:</span> <span class="tooltip-value" style="font-size: 0.75rem; word-break: break-all;">${data.parameter_uuid}</span></div>`;
+                    }
+
+                    tooltip.innerHTML = html;
+                    tooltip.classList.add('active');
+                });
+
+                // マウスアウトでツールチップ非表示
+                cy.on('mouseout', 'node', function(evt) {
+                    tooltip.classList.remove('active');
+                });
+
+                // マウス移動でツールチップの位置を更新
+                cy.on('mousemove', function(evt) {
+                    if (tooltip.classList.contains('active')) {
+                        const container = document.getElementById('graph-container');
+                        const rect = container.getBoundingClientRect();
+
+                        // マウス位置を取得（グラフコンテナ内の相対位置）
+                        const x = evt.originalEvent.clientX - rect.left;
+                        const y = evt.originalEvent.clientY - rect.top;
+
+                        // ツールチップの位置を設定（マウスの右下に表示）
+                        tooltip.style.left = (x + 15) + 'px';
+                        tooltip.style.top = (y + 15) + 'px';
+                    }
+                });
+
+                console.log(`✓ Graph loaded: ${data.stats.total_nodes} nodes, ${data.stats.total_edges} edges`);
+            } catch (error) {
+                console.error('Failed to load graph:', error);
+                document.getElementById('graph-container').innerHTML =
+                    '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #6b7280;">' +
+                    '<div><p>⚠️ グラフの読み込みに失敗しました</p><p style="font-size: 0.875rem;">' + error.message + '</p></div>' +
+                    '</div>';
+            }
+        }
+
+        // タブクリックイベント
+        tabFiftyone.addEventListener('click', () => switchTab('fiftyone'));
+        tabGraph.addEventListener('click', () => switchTab('graph'));
+
+        // 設定モーダル
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeModalBtn = document.getElementById('close-modal');
+        const cancelBtn = document.getElementById('cancel-settings');
+        const saveBtn = document.getElementById('save-settings');
+
+        // モーダルを開く
+        settingsBtn.addEventListener('click', async () => {
+            // 現在の設定を読み込み
+            try {
+                const response = await fetch('/api/carla/settings');
+                const settings = await response.json();
+
+                document.getElementById('carla-path').value = settings.carla_path || '';
+                document.getElementById('carla-map').value = settings.default_map || 'Town10HD_Opt';
+                document.getElementById('carla-port').value = settings.default_port || 2000;
+                document.getElementById('quality-level').value = settings.quality_level || 'Low';
+                document.getElementById('auto-start').checked = settings.auto_start || false;
+
+                // RenderOffScreenは追加引数から判定
+                const renderOffscreen = settings.additional_args?.includes('-RenderOffScreen');
+                document.getElementById('render-offscreen').checked = renderOffscreen || false;
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+            }
+
+            settingsModal.classList.add('active');
+        });
+
+        // モーダルを閉じる
+        const closeModal = () => {
+            settingsModal.classList.remove('active');
+        };
+
+        closeModalBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+
+        // モーダル外をクリックで閉じる
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                closeModal();
+            }
+        });
+
+        // 設定を保存
+        saveBtn.addEventListener('click', async () => {
+            const formData = new FormData();
+            formData.append('carla_path', document.getElementById('carla-path').value);
+            formData.append('executable_name', 'CarlaUE5.sh');
+            formData.append('default_port', document.getElementById('carla-port').value);
+            formData.append('default_map', document.getElementById('carla-map').value);
+            formData.append('quality_level', document.getElementById('quality-level').value);
+            formData.append('timeout', '60');
+            formData.append('auto_start', document.getElementById('auto-start').checked);
+
+            // 追加引数を構築
+            let additionalArgs = [];
+            if (document.getElementById('render-offscreen').checked) {
+                additionalArgs.push('-RenderOffScreen');
+            }
+            formData.append('additional_args', additionalArgs.join(' '));
+
+            try {
+                const response = await fetch('/api/carla/settings', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    alert('設定を保存しました');
+                    closeModal();
+                } else {
+                    alert('設定の保存に失敗しました');
+                }
+            } catch (error) {
+                console.error('Failed to save settings:', error);
+                alert('設定の保存に失敗しました: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>

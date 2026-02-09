@@ -1,0 +1,83 @@
+<div class="h-full flex flex-col">
+    <div class="p-4 bg-gray-100 border-b border-gray-300">
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">Rerun Viewer</h2>
+        <div class="flex items-center space-x-4">
+            <select
+                id="rerun-file-select"
+                class="p-2 border border-gray-300 rounded flex-1"
+                onchange="loadRerunFile(this.value)">
+                <option value="">RRDファイルを選択...</option>
+            </select>
+            <button
+                class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+                onclick="document.getElementById('rerun-upload').click()">
+                ファイルをアップロード
+            </button>
+            <input
+                type="file"
+                id="rerun-upload"
+                accept=".rrd"
+                style="display: none;"
+                onchange="uploadRerunFile(this.files[0])">
+        </div>
+    </div>
+
+    <div class="flex-1">
+        <iframe
+            id="rerun-iframe"
+            src="about:blank"
+            class="w-full h-full border-none"
+            sandbox="allow-scripts allow-same-origin">
+        </iframe>
+    </div>
+
+    <script>
+        function loadRerunFile(filePath) {
+            if (!filePath) return;
+
+            const iframe = document.getElementById('rerun-iframe');
+            // Rerun viewerのURLを設定（実際のrerun.ioのビューアーURLに置き換え）
+            iframe.src = `/rerun/view?file=${encodeURIComponent(filePath)}`;
+        }
+
+        function uploadRerunFile(file) {
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/api/rerun/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(result => {
+                alert('ファイルをアップロードしました');
+                // セレクトボックスを更新
+                loadRerunFileList();
+                loadRerunFile(result.file_path);
+            })
+            .catch(err => {
+                alert('アップロードに失敗しました: ' + err.message);
+            });
+        }
+
+        function loadRerunFileList() {
+            fetch('/api/rerun/files')
+                .then(r => r.json())
+                .then(files => {
+                    const select = document.getElementById('rerun-file-select');
+                    select.innerHTML = '<option value="">RRDファイルを選択...</option>';
+                    files.forEach(f => {
+                        const option = document.createElement('option');
+                        option.value = f.path;
+                        option.textContent = f.name;
+                        select.appendChild(option);
+                    });
+                });
+        }
+
+        // 初期化
+        loadRerunFileList();
+    </script>
+</div>

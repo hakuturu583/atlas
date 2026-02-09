@@ -1,0 +1,67 @@
+<div class="h-full flex flex-col">
+    <div class="p-4 bg-gray-100 border-b border-gray-300">
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">FiftyOne Viewer</h2>
+        <div class="flex items-center space-x-4">
+            <input
+                type="text"
+                id="fiftyone-url"
+                class="p-2 border border-gray-300 rounded flex-1"
+                placeholder="FiftyOne URL (例: http://remote-host:5151)"
+                value="{{ fiftyone_url }}">
+            <button
+                class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+                onclick="loadFiftyOne()">
+                接続
+            </button>
+            <button
+                class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+                onclick="reloadFiftyOne()">
+                リロード
+            </button>
+        </div>
+        <div class="mt-2 text-sm text-gray-600">
+            <p>リモートFiftyOneサーバーに接続して、データセットを可視化します。</p>
+        </div>
+    </div>
+
+    <div class="flex-1">
+        <iframe
+            id="fiftyone-iframe"
+            src="{{ fiftyone_url }}"
+            class="w-full h-full border-none"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups">
+        </iframe>
+    </div>
+
+    <script>
+        function loadFiftyOne() {
+            const url = document.getElementById('fiftyone-url').value;
+            if (!url) {
+                alert('FiftyOne URLを入力してください');
+                return;
+            }
+
+            const iframe = document.getElementById('fiftyone-iframe');
+            iframe.src = url;
+
+            // URLを保存（次回起動時に使用）
+            fetch('/api/fiftyone/save-url', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url})
+            }).catch(err => console.error('URL保存エラー:', err));
+        }
+
+        function reloadFiftyOne() {
+            const iframe = document.getElementById('fiftyone-iframe');
+            iframe.src = iframe.src;
+        }
+
+        // Enterキーでも接続できるように
+        document.getElementById('fiftyone-url').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadFiftyOne();
+            }
+        });
+    </script>
+</div>

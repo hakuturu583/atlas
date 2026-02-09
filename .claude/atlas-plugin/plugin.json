@@ -1,0 +1,9 @@
+{
+  "name": "atlas-plugin",
+  "version": "0.6.0",
+  "description": "ATLAS Scenario Writer plugin (MCP removed for simplicity)",
+  "author": "ATLAS Team",
+  "skills": {
+    "path": "skills"
+  }
+}

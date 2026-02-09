@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# uv
+.python-version
+uv.lock
+
+# FastAPI
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.env.local
+
+# ATLAS outputs and data
+# Scenario JSON files (abstract, logical, params, execution traces)
+data/scenarios/*.json
+
+# Rerun logs
+data/rerun/*.rrd
+
+# Videos
+data/videos/*.mp4
+data/videos/*.avi
+
+# Generated Python scenario files (UUID-based)
+scenarios/*.py
+
+# Keep directory structure and examples
+!data/scenarios/.gitkeep
+!data/rerun/.gitkeep
+!data/videos/.gitkeep
+!scenarios/.gitkeep
+!scenarios/examples/

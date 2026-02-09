@@ -1,0 +1,10 @@
+{
+  "carla_path": "/home/masaya/workspace/CarlaUE5/Unreal/CarlaUnreal/ArchivedBuilds/Linux",
+  "executable_name": "CarlaUnreal.sh",
+  "default_port": 2000,
+  "default_map": "Town10HD",
+  "quality_level": "Low",
+  "additional_args": "-RenderOffScreen -nosound -nullrhi",
+  "timeout": 60,
+  "auto_start": false
+}

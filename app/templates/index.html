@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}ATLAS - Home{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-lg shadow-md p-8">
+        <h2 class="text-3xl font-bold text-gray-800 mb-4">Welcome to ATLAS</h2>
+        <p class="text-gray-600 mb-6">
+            CARLA用のシナリオ生成・管理ツールです。
+        </p>
+
+        <!-- htmx デモ: 動的コンテンツの読み込み -->
+        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6">
+            <h3 class="text-lg font-semibold text-blue-800 mb-2">System Status</h3>
+            <div
+                hx-get="/health"
+                hx-trigger="load, every 10s"
+                hx-swap="innerHTML"
+                class="text-sm"
+            >
+                <span class="text-gray-500">Loading...</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow">
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">
+                    <span class="text-2xl mr-2">📝</span>
+                    Scenario Editor
+                </h3>
+                <p class="text-gray-600 mb-4">シナリオの作成と編集</p>
+                <button class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors">
+                    Coming Soon
+                </button>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow">
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">
+                    <span class="text-2xl mr-2">📋</span>
+                    Scenario List
+                </h3>
+                <p class="text-gray-600 mb-4">保存されたシナリオの管理</p>
+                <button class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors">
+                    Coming Soon
+                </button>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow">
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">
+                    <span class="text-2xl mr-2">▶️</span>
+                    Simulation
+                </h3>
+                <p class="text-gray-600 mb-4">CARLAでのシナリオ実行</p>
+                <button class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors">
+                    Coming Soon
+                </button>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow">
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">
+                    <span class="text-2xl mr-2">📊</span>
+                    Analytics
+                </h3>
+                <p class="text-gray-600 mb-4">シミュレーション結果の分析</p>
+                <button class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors">
+                    Coming Soon
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
