@@ -3,10 +3,14 @@ OpenDRIVEファイルの読み込みと解析
 """
 
 import carla
-import pyxodr
+from pyxodr.road_objects.network import RoadNetwork
+from pyxodr.road_objects.road import Road
+from pyxodr.road_objects.lane import Lane
+from pyxodr.road_objects.lane_section import LaneSection
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 import xml.etree.ElementTree as ET
+import tempfile
 
 
 class OpenDriveMap:
@@ -28,12 +32,20 @@ class OpenDriveMap:
         # OpenDRIVEファイルの取得
         self.opendrive_content = self.carla_map.to_opendrive()
 
-        # pyxodrでパース
-        self.xodr = pyxodr.OpenDrive.from_string(self.opendrive_content)
+        # pyxodrでパース（一時ファイル経由）
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xodr', delete=False) as f:
+            f.write(self.opendrive_content)
+            temp_path = f.name
+
+        try:
+            self.xodr = RoadNetwork(temp_path)
+        finally:
+            # 一時ファイルを削除
+            Path(temp_path).unlink(missing_ok=True)
 
         # キャッシュ
-        self._road_cache: Dict[int, pyxodr.Road] = {}
-        self._lane_cache: Dict[Tuple[int, int], pyxodr.Lane] = {}
+        self._road_cache: Dict[int, Road] = {}
+        self._lane_cache: Dict[Tuple[int, int], Lane] = {}
 
     def save_opendrive(self, output_path: str) -> None:
         """
@@ -44,7 +56,7 @@ class OpenDriveMap:
         """
         Path(output_path).write_text(self.opendrive_content)
 
-    def get_road(self, road_id: int) -> Optional[pyxodr.Road]:
+    def get_road(self, road_id: int) -> Optional[Road]:
         """
         Road IDからRoadオブジェクトを取得
 
@@ -57,13 +69,13 @@ class OpenDriveMap:
         if road_id in self._road_cache:
             return self._road_cache[road_id]
 
-        for road in self.xodr.roads:
+        for road in self.xodr.get_roads():
             if road.id == road_id:
                 self._road_cache[road_id] = road
                 return road
         return None
 
-    def get_lane_section(self, road_id: int, s: float) -> Optional[pyxodr.LaneSection]:
+    def get_lane_section(self, road_id: int, s: float) -> Optional[LaneSection]:
         """
         指定したs座標でのLaneSectionを取得
 
@@ -89,7 +101,7 @@ class OpenDriveMap:
 
         return None
 
-    def get_lane(self, road_id: int, lane_id: int, s: float) -> Optional[pyxodr.Lane]:
+    def get_lane(self, road_id: int, lane_id: int, s: float) -> Optional[Lane]:
         """
         指定したRoad、Lane、s座標でのLaneオブジェクトを取得
 
@@ -195,7 +207,7 @@ class OpenDriveMap:
             Roadの情報を含む辞書のリスト
         """
         roads = []
-        for road in self.xodr.roads:
+        for road in self.xodr.get_roads():
             roads.append({
                 'id': road.id,
                 'length': road.length,
