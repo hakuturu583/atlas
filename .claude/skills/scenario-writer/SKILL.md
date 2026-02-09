@@ -556,7 +556,49 @@ manager.create_execution_trace(
    - カーブ上での適切なスポーン
    - 複数レーンにまたがる配置
 
-3. **機能追加の手順**
+3. **🚨 必須: Git Workflowに従う**
+
+   **重要**: opendrive_utilsに機能追加する場合は、必ずブランチを切ってPRを出すこと
+
+   ```bash
+   # 1. 機能追加用のブランチを作成
+   git checkout -b feature/opendrive-utils-intersection-spawn
+
+   # 2. 機能を実装（下記の実装例を参照）
+   # opendrive_utils/spawn_helper.py または advanced_features.py を編集
+
+   # 3. 変更をコミット
+   git add opendrive_utils/
+   git commit -m "Add intersection entry spawn feature to opendrive_utils
+
+   - Implement get_spawn_at_intersection_entry() method
+   - Support spawning at junction entry points
+   - Add distance_before parameter for precise positioning
+
+   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+
+   # 4. ブランチをプッシュ
+   git push origin feature/opendrive-utils-intersection-spawn
+
+   # 5. PRを作成
+   gh pr create --title "Add intersection entry spawn feature" \
+                --body "## Summary
+   交差点の流入部にスポーンする機能を追加
+
+   ## Changes
+   - \`AdvancedFeatures.get_spawn_at_intersection_entry()\`を実装
+   - junction_id, incoming_road_id, distance_beforeパラメータをサポート
+
+   ## Test Plan
+   - [ ] 交差点でのスポーン動作を確認
+   - [ ] 距離パラメータの動作を検証
+
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+   ```
+
+   **レビュー＆マージ後に使用**: PRがマージされてから、シナリオスクリプトで新機能を使用してください。
+
+4. **機能追加の実装例**
    ```python
    # opendrive_utils/spawn_helper.py または advanced_features.py に追加
    def get_spawn_at_intersection_entry(
@@ -565,11 +607,20 @@ manager.create_execution_trace(
        incoming_road_id: int,
        distance_before: float = 10.0
    ) -> carla.Transform:
-       """交差点の流入部にスポーン"""
+       """交差点の流入部にスポーン
+
+       Args:
+           junction_id: 交差点ID
+           incoming_road_id: 流入道路ID
+           distance_before: 交差点手前の距離（メートル）
+
+       Returns:
+           スポーン用Transform
+       """
        # 実装...
    ```
 
-4. **追加後に使用**
+5. **追加後に使用**
    ```python
    # シナリオスクリプトで新機能を使用
    from opendrive_utils import AdvancedFeatures
