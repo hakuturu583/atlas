@@ -14,8 +14,8 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 
 # オプション解析
-SHUTDOWN_SANDBOX=true
 SHUTDOWN_FLASK=true
+SHUTDOWN_MCP=true
 SHUTDOWN_FIFTYONE=true
 SHUTDOWN_CARLA=true
 CLEAN_DOCKER=false
@@ -23,26 +23,28 @@ FORCE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --sandbox-only)
-            SHUTDOWN_FLASK=false
+        --flask-only)
             SHUTDOWN_MCP=false
+            SHUTDOWN_FIFTYONE=false
+            SHUTDOWN_CARLA=false
             shift
             ;;
-        --flask-only)
-            SHUTDOWN_SANDBOX=false
+        --mcp-only)
+            SHUTDOWN_FLASK=false
             SHUTDOWN_FIFTYONE=false
+            SHUTDOWN_CARLA=false
             shift
             ;;
         --fiftyone-only)
-            SHUTDOWN_SANDBOX=false
             SHUTDOWN_FLASK=false
+            SHUTDOWN_MCP=false
             SHUTDOWN_CARLA=false
             shift
             ;;
         --carla-only)
-            SHUTDOWN_SANDBOX=false
             SHUTDOWN_FLASK=false
             SHUTDOWN_MCP=false
+            SHUTDOWN_FIFTYONE=false
             shift
             ;;
         --no-carla)
@@ -61,10 +63,10 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: ./shutdown.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --sandbox-only   Sandboxコンテナのみシャットダウン"
             echo "  --flask-only     Flaskアプリケーションのみシャットダウン"
             echo "  --mcp-only       MCPサーバーのみシャットダウン"
             echo "  --carla-only     CARLAサーバーのみシャットダウン"
+            echo "  --fiftyone-only  FiftyOneのみシャットダウン"
             echo "  --no-carla       CARLAはシャットダウンしない"
             echo "  --clean-docker   Dockerイメージも削除"
             echo "  -f, --force      確認なしで実行"
@@ -92,7 +94,6 @@ if [ "$FORCE" = false ]; then
     [ "$SHUTDOWN_FLASK" = true ] && echo "  ✓ Flask application (port 8000)"
     [ "$SHUTDOWN_MCP" = true ] && echo "  ✓ MCP server"
     [ "$SHUTDOWN_CARLA" = true ] && echo "  ✓ CARLA server"
-    [ "$SHUTDOWN_SANDBOX" = true ] && echo "  ✓ Sandbox Docker containers"
     [ "$CLEAN_DOCKER" = true ] && echo "  ✓ Docker images"
     echo ""
     read -p "Continue? [y/N] " -n 1 -r
@@ -210,36 +211,8 @@ if [ "$SHUTDOWN_CARLA" = true ]; then
     echo ""
 fi
 
-# Sandbox Docker コンテナのシャットダウン
-if [ "$SHUTDOWN_SANDBOX" = true ]; then
-    echo -e "${CYAN}[4/4] Shutting down Sandbox containers...${NC}"
-
-    if [ -d "sandbox" ]; then
-        cd sandbox
-
-        # Dockerコンテナが動いているか確認
-        CONTAINERS=$(docker-compose ps -q 2>/dev/null)
-
-        if [ -n "$CONTAINERS" ]; then
-            echo -e "${YELLOW}  Stopping sandbox containers...${NC}"
-
-            if [ "$CLEAN_DOCKER" = true ]; then
-                docker-compose down --rmi all -v 2>/dev/null
-                echo -e "${GREEN}  ✓ Sandbox containers, volumes and images removed${NC}"
-            else
-                docker-compose down 2>/dev/null
-                echo -e "${GREEN}  ✓ Sandbox containers stopped${NC}"
-            fi
-        else
-            echo -e "${GREEN}  ✓ Sandbox containers not running${NC}"
-        fi
-
-        cd ..
-    else
-        echo -e "${YELLOW}  Sandbox directory not found, skipping...${NC}"
-    fi
-    echo ""
-fi
+# Sandbox は削除されました（Python実装に移行）
+# Sandbox関連のシャットダウン処理は不要
 
 # システム状態の確認
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"

@@ -24,7 +24,8 @@ from app.models.scenario_trace import (
     Maneuver
 )
 
-from app.services.sandbox_manager import sandbox_manager, sandbox_launcher
+# sandbox_manager は削除されました（Python実装に移行）
+# from app.services.sandbox_manager import sandbox_manager, sandbox_launcher
 import logging
 
 logger = logging.getLogger(__name__)
@@ -236,35 +237,23 @@ class ScenarioWriter:
                 logger.info(f"Created config file: {config_file}")
                 print(f"[ScenarioWriter] Created config file: {config_file}")
 
-                # 4. CARLAサーバー接続チェック
-                logger.info("Checking CARLA server...")
-                print(f"[ScenarioWriter] Checking CARLA server...")
-                if not sandbox_launcher.check_carla_server(timeout=2.0):
-                    error_msg = "CARLA server is not accessible at localhost:2000"
-                    logger.error(error_msg)
-                    print(f"[ScenarioWriter] ERROR: {error_msg}")
-                    build_errors.append({
-                        "attempt": attempt,
-                        "error": error_msg,
-                        "fix": "start_carla_server"
-                    })
-                    # CARLAが起動していない場合は、リトライしても無駄なので終了
-                    return {
-                        "success": False,
-                        "attempt": attempt,
-                        "uuid": scenario_uuid,
-                        "errors": build_errors,
-                        "logs": "CARLA server is not running. Please start CARLA first."
-                    }
-                logger.info("CARLA server is accessible ✓")
-                print(f"[ScenarioWriter] CARLA server is accessible ✓")
+                # 4. CARLAサーバー接続チェック（スキップ - sandbox_launcher削除済み）
+                logger.warning("CARLA server check skipped (sandbox_launcher removed)")
+                print(f"[ScenarioWriter] WARNING: CARLA server check skipped")
 
-                # 5. sandbox起動（SandboxLauncherを使用）
-                logger.info(f"Launching sandbox with UUID: {scenario_uuid}")
-                print(f"[ScenarioWriter] Launching sandbox...")
-
-                # 基本的なlaunch_sandboxを使用（SandboxLauncherは検証が多すぎる）
-                uuid_returned, result = sandbox_manager.launch_sandbox(scenario_uuid=scenario_uuid)
+                # 5. sandbox起動（廃止 - Python実装に移行済み）
+                logger.error("launch_scenario_with_retry is deprecated. Use Python implementation instead.")
+                return {
+                    "success": False,
+                    "attempt": attempt,
+                    "uuid": scenario_uuid,
+                    "errors": [{
+                        "attempt": attempt,
+                        "error": "C++ sandbox execution is deprecated",
+                        "fix": "Use Python-based scenario implementation (see scenario-writer skill)"
+                    }],
+                    "logs": "This method is deprecated. Please use the new Python-based scenario implementation."
+                }
 
                 # 6. 結果を解析
                 logs = f"=== STDOUT ===\n{result.stdout}\n\n=== STDERR ===\n{result.stderr}"

@@ -295,23 +295,52 @@ async def get_carla_status():
     return carla_manager.get_status()
 
 
-@router.post("/carla/settings")
-async def save_carla_settings(settings: CarlaSettings):
-    """CARLA設定を保存（JSONペイロード）"""
+@router.post("/carla/settings", response_class=HTMLResponse)
+async def save_carla_settings(
+    carla_path: str = Form(...),
+    executable_name: str = Form(...),
+    default_port: int = Form(...),
+    default_map: str = Form(...),
+    quality_level: str = Form(...),
+    additional_args: str = Form(""),
+    timeout: int = Form(...),
+    auto_start: Optional[str] = Form(None)
+):
+    """CARLA設定を保存（フォームデータ）"""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # チェックボックスの値をboolに変換（チェックされていれば値が送信される）
+    auto_start_bool = auto_start is not None
+
+    logger.info(f"Received settings: carla_path={carla_path}, executable_name={executable_name}, "
+                f"default_port={default_port}, default_map={default_map}, quality_level={quality_level}, "
+                f"additional_args='{additional_args}', timeout={timeout}, auto_start={auto_start_bool}")
+
     carla_manager = get_carla_manager()
-    settings_dict = settings.model_dump()
+
+    settings_dict = {
+        "carla_path": carla_path,
+        "executable_name": executable_name,
+        "default_port": default_port,
+        "default_map": default_map,
+        "quality_level": quality_level,
+        "additional_args": additional_args,
+        "timeout": timeout,
+        "auto_start": auto_start_bool
+    }
 
     try:
         updated = carla_manager.update_settings(settings_dict)
-        return {
-            "success": True,
-            "message": "設定を保存しました",
-            "settings": updated.model_dump()
-        }
+        return HTMLResponse(
+            content='<div class="p-4 mb-4 text-green-700 bg-green-100 rounded-lg">'
+                    '✓ 設定を保存しました</div>'
+        )
     except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"設定の保存に失敗しました: {str(e)}"
+        return HTMLResponse(
+            content=f'<div class="p-4 mb-4 text-red-700 bg-red-100 rounded-lg">'
+                    f'✗ エラー: {str(e)}</div>',
+            status_code=400
         )
 
 

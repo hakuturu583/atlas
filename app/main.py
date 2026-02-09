@@ -1,14 +1,14 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.exceptions import RequestValidationError
 from pathlib import Path
 import logging
 import atexit
 
 from app.routers import views, api, websocket
 from app.services.carla_manager import get_carla_manager
-from app.services.sandbox_manager import sandbox_manager
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,21 @@ app = FastAPI(
     description="Analytic Transparent LAnguage-driven Scenario generator for CARLA",
     version="0.1.0"
 )
+
+# バリデーションエラーのハンドラー
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """バリデーションエラーの詳細をログに出力"""
+    logger.error(f"Validation error for {request.method} {request.url}")
+    logger.error(f"Error details: {exc.errors()}")
+    logger.error(f"Request body: {exc.body}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": exc.errors(),
+            "body": str(exc.body) if exc.body else None
+        }
+    )
 
 # 静的ファイルとテンプレートの設定
 BASE_DIR = Path(__file__).resolve().parent
@@ -57,21 +72,7 @@ async def shutdown_event():
     """アプリケーション終了時のクリーンアップ処理"""
     logger.info("ATLAS application shutting down...")
 
-    # 1. すべてのSandboxコンテナを停止
-    logger.info("Stopping all sandbox containers...")
-    try:
-        result = sandbox_manager.stop_all_sandboxes(
-            remove_workspaces=False,
-            force=True
-        )
-        if result.returncode == 0:
-            logger.info("All sandbox containers stopped successfully")
-        else:
-            logger.warning(f"Failed to stop some sandbox containers: {result.stderr}")
-    except Exception as e:
-        logger.error(f"Error stopping sandbox containers: {e}")
-
-    # 2. CARLAサーバーを停止
+    # CARLAサーバーを停止
     logger.info("Stopping CARLA server...")
     try:
         carla_manager = get_carla_manager()
