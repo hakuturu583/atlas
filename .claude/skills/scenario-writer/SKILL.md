@@ -531,16 +531,78 @@ manager.create_execution_trace(
 
 ## 🚨 CRITICAL: opendrive_utilsライブラリの使用
 
-**重要**: シナリオ実装では、必ず`opendrive_utils`ライブラリを使用してスポーン位置を計算してください。
+### 🎯 必須要件（絶対に守ること）
+
+**すべてのNPC配置は`opendrive_utils`を使ってOpenDRIVEから決定すること**
+
+これは**必須要件**です。シナリオ実装時には、以下を厳守してください：
+
+1. ✅ **必ず`opendrive_utils`を使用**してスポーン位置を計算
+2. ❌ **手動での座標指定を完全に禁止**（`carla.Location(x=100.0, y=200.0, ...)`など）
+3. ❌ **`carla.Map.get_spawn_points()`の使用を禁止**
+4. ⚙️ **機能が不足している場合は`opendrive_utils`に機能追加してから使用**
+
+### 🔧 機能が不足している場合の対応
+
+`opendrive_utils`に必要な機能がない場合：
+
+1. **機能追加を検討する**
+   - `opendrive_utils/`ディレクトリに新しい機能を追加
+   - 例: 特定の交差点タイプでのスポーン、特殊なレーン配置など
+
+2. **追加すべき機能の例**
+   - 交差点の特定の位置へのスポーン
+   - 信号機からの距離を考慮したスポーン
+   - カーブ上での適切なスポーン
+   - 複数レーンにまたがる配置
+
+3. **機能追加の手順**
+   ```python
+   # opendrive_utils/spawn_helper.py または advanced_features.py に追加
+   def get_spawn_at_intersection_entry(
+       self,
+       junction_id: int,
+       incoming_road_id: int,
+       distance_before: float = 10.0
+   ) -> carla.Transform:
+       """交差点の流入部にスポーン"""
+       # 実装...
+   ```
+
+4. **追加後に使用**
+   ```python
+   # シナリオスクリプトで新機能を使用
+   from opendrive_utils import AdvancedFeatures
+
+   advanced = AdvancedFeatures(od_map)
+   transform = advanced.get_spawn_at_intersection_entry(
+       junction_id=5,
+       incoming_road_id=10,
+       distance_before=15.0
+   )
+   ```
 
 ### ❌ 禁止事項
 
-**`carla.Map.get_spawn_points()`を使用しないこと**
+**以下の方法は絶対に使用しないこと**
 
-理由:
-- 事前定義されたスポーン位置はランダムで、狙った位置に配置できない
-- シナリオの再現性が保証されない
-- レーン座標や信号機との位置関係を正確に制御できない
+#### 1. 手動座標指定（禁止）
+
+```python
+# ❌ BAD: 手動で座標を指定（完全に禁止）
+ego_spawn_location = carla.Location(x=-50.0, y=10.0, z=0.3)
+ego_spawn_rotation = carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0)
+ego_transform = carla.Transform(ego_spawn_location, ego_spawn_rotation)
+vehicle = world.spawn_actor(blueprint, ego_transform)
+```
+
+理由：
+- OpenDRIVEの道路構造を無視している
+- レーン情報が反映されない
+- 他の車両との関係性が不明確
+- シナリオの意味的な正確性が失われる
+
+#### 2. Spawn Points使用（禁止）
 
 ```python
 # ❌ BAD: Spawn Pointsを使用（禁止）
@@ -548,6 +610,11 @@ spawn_points = world.get_map().get_spawn_points()
 transform = spawn_points[0]  # ランダムな位置
 vehicle = world.spawn_actor(blueprint, transform)
 ```
+
+理由:
+- 事前定義されたスポーン位置はランダムで、狙った位置に配置できない
+- シナリオの再現性が保証されない
+- レーン座標や信号機との位置関係を正確に制御できない
 
 ### ✅ 必須: opendrive_utilsの使用
 
@@ -886,8 +953,8 @@ opendrive_utilsを使う場合、パラメータファイルには以下を含�
 2. **具体パラメータの生成**
    - **パラメータUUID生成**: `uuid.uuid4()`で新しいUUIDを生成
    - 論理シナリオから具体的なパラメータを生成:
-     - CARLAマップ名（例: Town04）
-     - 車両スポーン位置（x, y, z, yaw）
+     - CARLAマップ名（例: Town10HD_Opt）
+     - 車両配置情報（road_id, lane_id, s）**※座標（x, y, z, yaw）は含めない**
      - 初期速度
      - シミュレーション時間
      - カメラ設定
@@ -904,6 +971,9 @@ opendrive_utilsを使う場合、パラメータファイルには以下を含�
      - ✅ finallyブロックでクリーンアップ
 
 4. **パラメータファイル例** (`data/scenarios/params_abc12345-6789-0123-4567-890abcdef012.json`):
+
+   **重要**: opendrive_utilsを使用するため、スポーン位置の座標（x, y, z, yaw）は**含めません**。
+
    ```json
    {
      "parameter_uuid": "abc12345-6789-0123-4567-890abcdef012",
@@ -911,20 +981,20 @@ opendrive_utilsを使う場合、パラメータファイルには以下を含�
      "carla": {
        "host": "localhost",
        "port": 2000,
-       "map": "Town04"
-     },
-     "vehicles": {
-       "ego": {
-         "spawn": {"x": 100.0, "y": 200.0, "z": 0.3, "yaw": 0.0},
-         "initial_speed": 50.0
-       },
-       "lead": {
-         "spawn": {"x": 120.0, "y": 200.0, "z": 0.3, "yaw": 0.0},
-         "initial_speed": 80.0
-       }
+       "map": "Town10HD_Opt"
      },
      "scenario": {
+       "road_id": 10,
+       "lane_id": -1,
        "duration": 10.0,
+       "ego_vehicle": {
+         "s": 50.0,
+         "initial_speed": 50.0
+       },
+       "lead_vehicle": {
+         "s": 80.0,
+         "initial_speed": 80.0
+       },
        "target_distance": 20.0
      },
      "output": {
@@ -934,102 +1004,35 @@ opendrive_utilsを使う場合、パラメータファイルには以下を含�
    }
    ```
 
-5. **実装例** (`scenarios/550e8400-e29b-41d4-a716-446655440000.py`):
-   ```python
-   #!/usr/bin/env python3
-   """
-   高速道路追従シナリオ
+   **説明**:
+   - `road_id`, `lane_id`: レーン座標（OpenDRIVEから取得）
+   - `s`: 道路の始点からの距離（メートル）
+   - 実行時に`opendrive_utils`が`s`値から正確な位置と方向を計算します
 
-   Logical Scenario UUID: 550e8400-e29b-41d4-a716-446655440000
-   Parent Abstract Scenario UUID: a1b2c3d4-e5f6-4789-a012-3456789abcde
-   """
-   import carla
-   import time
-   import math
-   import sys
-   import json
-   import argparse
+5. **実装例の参照**
 
+   **重要**: すべての実装例は `opendrive_utils` を使用する必要があります。
 
-   def get_distance(v1, v2):
-       """Calculate distance between two vehicles"""
-       l1 = v1.get_location()
-       l2 = v2.get_location()
-       return math.sqrt((l1.x - l2.x)**2 + (l1.y - l2.y)**2)
+   opendrive_utilsを使った完全な実装例は、このドキュメントの以下のセクションを参照してください：
 
+   - **「## 🚨 CRITICAL: opendrive_utilsライブラリの使用」セクション**
+     - 基本的な使い方（レーン座標からのスポーン）
+     - 信号機を考慮したスポーン
+     - 交差点での配置
+     - 停止線の手前へのスポーン
 
-   def main():
-       # コマンドライン引数からパラメータファイルを読み込み
-       parser = argparse.ArgumentParser()
-       parser.add_argument('--params', required=True, help='Path to parameter JSON file')
-       args = parser.parse_args()
+   - **実装例: 信号機待ちシナリオ**（行番号: 約750-900）
+     - opendrive_utilsの完全な使用例
+     - AdvancedFeaturesの活用
+     - Traffic Managerとの統合
 
-       with open(args.params) as f:
-           params = json.load(f)
+   **禁止事項**:
+   - ❌ 手動での座標指定（`carla.Location(x=100.0, y=200.0, ...)`）
+   - ❌ `carla.Map.get_spawn_points()`の使用
 
-       # CARLA接続
-       client = carla.Client(params['carla']['host'], params['carla']['port'])
-       client.set_timeout(10.0)
-       world = client.get_world()
-
-       actors = []
-       try:
-           blueprint_library = world.get_blueprint_library()
-           vehicle_bp = blueprint_library.filter('vehicle.*')[0]
-
-           # 先行車両をスポーン
-           lead_spawn = params['vehicles']['lead']['spawn']
-           lead_transform = carla.Transform(
-               carla.Location(x=lead_spawn['x'], y=lead_spawn['y'], z=lead_spawn['z']),
-               carla.Rotation(yaw=lead_spawn['yaw'])
-           )
-           lead_vehicle = world.spawn_actor(vehicle_bp, lead_transform)
-           actors.append(lead_vehicle)
-
-           # 追従車両をスポーン
-           ego_spawn = params['vehicles']['ego']['spawn']
-           ego_transform = carla.Transform(
-               carla.Location(x=ego_spawn['x'], y=ego_spawn['y'], z=ego_spawn['z']),
-               carla.Rotation(yaw=ego_spawn['yaw'])
-           )
-           follow_vehicle = world.spawn_actor(vehicle_bp, ego_transform)
-           actors.append(follow_vehicle)
-
-           # シナリオ実行
-           duration = params['scenario']['duration']
-           target_distance = params['scenario']['target_distance']
-           steps = int(duration / 0.05)
-
-           for i in range(steps):
-               # 先行車両は一定速度
-               lead_control = carla.VehicleControl(throttle=0.5)
-               lead_vehicle.apply_control(lead_control)
-
-               # 追従車両は距離に応じて速度調整
-               distance = get_distance(lead_vehicle, follow_vehicle)
-               throttle = 0.6 if distance > target_distance else 0.3
-               follow_control = carla.VehicleControl(throttle=throttle)
-               follow_vehicle.apply_control(follow_control)
-
-               print(f"t={i*0.05:.2f}: distance={distance:.2f}m")
-               time.sleep(0.05)
-
-           print(f"✓ 出力: {params['output']['rrd_file']}")
-           print(f"✓ 出力: {params['output']['mp4_file']}")
-           return 0
-
-       except Exception as e:
-           print(f"Error: {e}", file=sys.stderr)
-           return 1
-
-       finally:
-           for actor in actors:
-               actor.destroy()
-
-
-   if __name__ == "__main__":
-       sys.exit(main())
-   ```
+   **必須**:
+   - ✅ `opendrive_utils.SpawnHelper`を使用してレーン座標から配置
+   - ✅ 機能が不足している場合は`opendrive_utils`に機能追加してから使用
 
 ### Phase 4: 実行・デバッグ
 
