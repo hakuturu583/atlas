@@ -121,13 +121,10 @@ CARLAシミュレーター用のシナリオ生成・管理ツールで、自然
 atlas/                              ← プロジェクトルート（working directory）
 ├── app/                            ← FastAPIアプリケーション
 │   ├── main.py                     ← メインアプリ（FastAPIインスタンス）
-│   ├── mcp/
-│   │   └── server.py               ← MCPサーバー実装（stdio通信）
 │   ├── routers/                    ← APIルーター
 │   │   ├── views.py                ← 画面レンダリング（Jinja2）
 │   │   ├── api.py                  ← REST API エンドポイント
-│   │   ├── websocket.py            ← WebSocket通信（ターミナル、UI状態）
-│   │   └── mcp_bridge.py           ← MCP統合ブリッジ
+│   │   └── websocket.py            ← WebSocket通信（ターミナル、UI状態）
 │   ├── services/                   ← ビジネスロジック
 │   │   ├── ui_state_manager.py     ← UI状態管理（pub/sub）
 │   │   └── scenario_manager.py     ← シナリオ管理
@@ -217,7 +214,6 @@ atlas/                              ← プロジェクトルート（working di
 ├── Makefile                        ← ビルド・実行タスク
 ├── run.sh                          ← 本番起動スクリプト
 ├── run_dev.sh                      ← 開発起動スクリプト（--reload）
-├── run_mcp_server.sh               ← MCPサーバー起動スクリプト
 ├── shutdown.sh                     ← システムシャットダウンスクリプト
 └── README.md                       ← プロジェクトドキュメント
 ```
@@ -835,16 +831,6 @@ make dev
 - `app/models/*.py` - モデル
 - `app/templates/*.html` - テンプレート
 
-**注意**: MCPサーバー（`app/mcp/server.py`）の変更は再起動が必要です。
-
-#### MCPサーバー変更
-
-```bash
-# MCPサーバーを再起動
-make shutdown-flask
-make dev
-```
-
 #### フロントエンド変更
 
 - HTMLテンプレート: 自動リロード
@@ -938,9 +924,6 @@ make sandbox
 # Flaskアプリのみ
 ./run_dev.sh
 
-# MCPサーバーのみ
-./run_mcp_server.sh
-
 # Sandboxのみ（新しいUUID）
 cd sandbox && ./run.sh
 
@@ -1030,10 +1013,7 @@ make status
 Flask Application (port 8000):
   ✓ Running (PID: 12345)
 
-MCP Server:
-  ✓ Running (PID: 67890)
-
-Sandbox Containers:
+CARLA Server:
   ✗ Not running
 ```
 
@@ -1054,18 +1034,7 @@ lsof -ti:8000
 kill $(lsof -ti:8000)
 ```
 
-### 2. MCPサーバーが応答しない
-
-```bash
-# MCPサーバープロセスを確認
-pgrep -f "python -m app.mcp.server"
-
-# 再起動
-./shutdown.sh --mcp-only
-./run_mcp_server.sh
-```
-
-### 3. Sandboxコンテナが起動しない
+### 2. Sandboxコンテナが起動しない
 
 ```bash
 # ログ確認
@@ -1328,27 +1297,14 @@ make sandbox-launch
 make sandbox-list
 ```
 
-### MCPツール呼び出し例
+### スキル実行例
 
-```python
-# 画面切り替え
-change_view(view="scenario_list")
-
-# 現在の画面取得
-get_current_view()
-
-# シナリオ一覧
-list_scenarios()
-
-# シナリオ詳細
-get_scenario(scenario_id="scenario_001")
-```
-
-### スラッシュコマンド
+スキルは自然言語で呼び出せます：
 
 ```
-/view home              # ホームに戻る
-/view scenario_list     # シナリオ一覧を表示
+シナリオを生成して        # scenario-writerスキルを起動
+シナリオ一覧を見せて      # scenario-managerスキルを起動
+CARLAを起動して          # carla-launcherスキルを起動
 ```
 
 ---
