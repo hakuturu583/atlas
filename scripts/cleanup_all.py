@@ -3,20 +3,21 @@
 完全クリーンアップスクリプト
 
 シナリオ関連のすべてのファイルとログを削除します：
-- シナリオJSON（abstract, logical, parameters）
+- シナリオJSON（natural, pegasus, abstract, logical, execution, parameters）
 - Pythonスクリプト
 - 動画ファイル（.mp4）
 - RRDファイル（.rrd）
 - Embeddingファイル（.json, .npy）
 - ログファイル
-- FiftyOneデータセット
+- FiftyOneデータセット内の対応するsample
 - Sandboxワークスペース（オプション）
 """
 
 import argparse
 import shutil
+import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set, Tuple
 
 
 def get_file_size(file_path: Path) -> int:
@@ -34,6 +35,28 @@ def format_size(size_bytes: int) -> str:
             return f"{size_bytes:.1f}{unit}"
         size_bytes /= 1024.0
     return f"{size_bytes:.1f}TB"
+
+
+def extract_scenario_ids(files: Dict[str, List[Path]]) -> Set[Tuple[str, str]]:
+    """
+    削除対象のexecution_*.jsonから(logical_uuid, parameter_uuid)のペアを抽出
+    FiftyOneから削除するsampleを特定するために使用
+    """
+    scenario_ids = set()
+
+    for execution_file in files.get("scenarios", []):
+        if execution_file.name.startswith("execution_"):
+            try:
+                with open(execution_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    logical_uuid = data.get("logical_uuid")
+                    parameter_uuid = data.get("parameter_uuid")
+                    if logical_uuid and parameter_uuid:
+                        scenario_ids.add((logical_uuid, parameter_uuid))
+            except Exception as e:
+                print(f"⚠️  execution_*.json読み込みエラー: {execution_file.name} - {e}")
+
+    return scenario_ids
 
 
 def collect_files(base_dir: Path, include_sandbox: bool = False) -> Dict[str, List[Path]]:
@@ -55,8 +78,10 @@ def collect_files(base_dir: Path, include_sandbox: bool = False) -> Dict[str, Li
     embeddings_dir = base_dir / "data" / "embeddings"
     logs_dir = base_dir / "logs"
 
-    # シナリオJSON（abstract, logical）
+    # シナリオJSON（natural, pegasus, abstract, logical, execution）
     if scenarios_dir.exists():
+        files["scenarios"].extend(scenarios_dir.glob("natural_*.json"))
+        files["scenarios"].extend(scenarios_dir.glob("pegasus_*.json"))
         files["scenarios"].extend(scenarios_dir.glob("abstract_*.json"))
         files["scenarios"].extend(scenarios_dir.glob("logical_*.json"))
         files["scenarios"].extend(scenarios_dir.glob("execution_*.json"))
@@ -145,13 +170,79 @@ def delete_files(files: Dict[str, List[Path]], dry_run: bool = True) -> None:
     print(f"\n✓ {deleted_count}ファイルを削除しました")
 
 
+def cleanup_fiftyone_samples(
+    scenario_ids: Set[Tuple[str, str]],
+    dataset_name: str = "carla-scenarios",
+    dry_run: bool = True
+) -> None:
+    """
+    FiftyOneデータセットから削除されたシナリオに対応するsampleを削除
+
+    Args:
+        scenario_ids: (logical_uuid, parameter_uuid)のセット
+        dataset_name: FiftyOneデータセット名
+        dry_run: Trueの場合、削除しない
+    """
+    if not scenario_ids:
+        print("\n【FiftyOne Samples】")
+        print("  - 削除対象のシナリオIDが見つかりません（スキップ）")
+        return
+
+    try:
+        import fiftyone as fo
+
+        if not fo.dataset_exists(dataset_name):
+            print(f"\n【FiftyOne Samples】")
+            print(f"  - データセット '{dataset_name}' は存在しません")
+            return
+
+        dataset = fo.load_dataset(dataset_name)
+        deleted_count = 0
+        samples_to_delete = []
+
+        print(f"\n【FiftyOne Samples】")
+        print(f"  データセット: {dataset_name}")
+        print(f"  削除対象シナリオ数: {len(scenario_ids)}")
+
+        # 削除対象のsampleを検索
+        for logical_uuid, parameter_uuid in scenario_ids:
+            # ファイル名パターン: {logical_uuid}_{parameter_uuid}.mp4
+            video_filename = f"{logical_uuid}_{parameter_uuid}.mp4"
+
+            # FiftyOneからsampleを検索（filepath部分一致）
+            view = dataset.match({"filepath": {"$regex": video_filename}})
+
+            for sample in view:
+                samples_to_delete.append(sample.id)
+                print(f"  - 削除予定: {Path(sample.filepath).name}")
+
+        if not samples_to_delete:
+            print(f"  - 削除対象のsampleが見つかりません")
+            return
+
+        if not dry_run:
+            # 実際に削除
+            dataset.delete_samples(samples_to_delete)
+            deleted_count = len(samples_to_delete)
+            print(f"\n✓ FiftyOneから{deleted_count}件のsampleを削除しました")
+        else:
+            print(f"\n  （{len(samples_to_delete)}件のsampleを削除予定）")
+
+    except ImportError:
+        print("\n⚠️  FiftyOneがインストールされていません（スキップ）")
+    except Exception as e:
+        print(f"\n✗ FiftyOne sample削除エラー: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def delete_fiftyone_dataset(dataset_name: str = "carla-scenarios", dry_run: bool = True) -> None:
-    """FiftyOneデータセットを削除"""
+    """FiftyOneデータセット全体を削除"""
     try:
         import fiftyone as fo
 
         if fo.dataset_exists(dataset_name):
-            print(f"\n【FiftyOne Dataset】")
+            print(f"\n【FiftyOne Dataset（全体削除）】")
             print(f"  - {dataset_name}")
 
             if not dry_run:
@@ -186,12 +277,17 @@ def main():
     parser.add_argument(
         "--fiftyone-dataset",
         default="carla-scenarios",
-        help="削除するFiftyOneデータセット名（デフォルト: carla-scenarios）"
+        help="FiftyOneデータセット名（デフォルト: carla-scenarios）"
     )
     parser.add_argument(
         "--no-fiftyone",
         action="store_true",
-        help="FiftyOneデータセットを削除しない"
+        help="FiftyOne関連の削除をスキップ"
+    )
+    parser.add_argument(
+        "--delete-entire-dataset",
+        action="store_true",
+        help="データセット全体を削除（デフォルトは個別sample削除）"
     )
 
     args = parser.parse_args()
@@ -209,12 +305,26 @@ def main():
     print("\nファイルを検索中...")
     files = collect_files(base_dir, include_sandbox=args.include_sandbox)
 
+    # シナリオIDを抽出（FiftyOne削除用）
+    scenario_ids = extract_scenario_ids(files)
+    if scenario_ids:
+        print(f"  抽出されたシナリオID: {len(scenario_ids)}件")
+
     # ファイル削除
     delete_files(files, dry_run=not args.force)
 
-    # FiftyOneデータセット削除
+    # FiftyOne処理
     if not args.no_fiftyone:
-        delete_fiftyone_dataset(args.fiftyone_dataset, dry_run=not args.force)
+        if args.delete_entire_dataset:
+            # データセット全体を削除
+            delete_fiftyone_dataset(args.fiftyone_dataset, dry_run=not args.force)
+        else:
+            # 個別sampleを削除
+            cleanup_fiftyone_samples(
+                scenario_ids,
+                dataset_name=args.fiftyone_dataset,
+                dry_run=not args.force
+            )
 
     if not args.force:
         print("\n💡 実際に削除するには:")

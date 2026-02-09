@@ -21,6 +21,8 @@ description: This skill should be used when the user asks to "clean up scenarios
 ## 削除対象
 
 ### 1. シナリオファイル
+- **自然言語シナリオ**: `data/scenarios/natural_*.json`
+- **PEGASUS分析**: `data/scenarios/pegasus_*.json`
 - **抽象シナリオ**: `data/scenarios/abstract_*.json`
 - **論理シナリオ**: `data/scenarios/logical_*.json`
 - **パラメータ**: `data/scenarios/params_*.json`, `logical_*_parameters.json`
@@ -43,8 +45,9 @@ description: This skill should be used when the user asks to "clean up scenarios
 ### 6. ログファイル
 - **すべてのログ**: `logs/*.log`
 
-### 7. FiftyOneデータセット
-- **デフォルト**: `carla-scenarios`
+### 7. FiftyOne
+- **個別sample削除**: 削除したシナリオに対応するsampleのみを削除（デフォルト）
+- **データセット全体削除**: `carla-scenarios`データセット全体を削除（`--delete-entire-dataset`オプション）
 
 ### 8. Sandboxワークスペース（オプション）
 - **ワークスペース**: `sandbox/workspace/<uuid>/`
@@ -67,7 +70,7 @@ uv run python scripts/cleanup_all.py
 uv run python scripts/cleanup_all.py --force
 ```
 
-すべてのファイルとFiftyOneデータセットを削除します。
+すべてのファイルを削除し、FiftyOneから対応するsampleを削除します。
 
 ### オプション
 
@@ -93,16 +96,25 @@ FiftyOneデータセットを削除せずに、ファイルのみを削除しま
 uv run python scripts/cleanup_all.py --force --fiftyone-dataset my-dataset
 ```
 
-デフォルト以外のFiftyOneデータセットを削除します。
+デフォルト以外のFiftyOneデータセットを指定します。
+
+#### データセット全体を削除
+
+```bash
+uv run python scripts/cleanup_all.py --force --delete-entire-dataset
+```
+
+個別sample削除ではなく、データセット全体を削除します。
 
 ## コマンド一覧
 
 | コマンド | 説明 |
 |---------|------|
 | `cleanup_all.py` | ドライラン（確認のみ）|
-| `cleanup_all.py --force` | すべて削除 |
+| `cleanup_all.py --force` | すべて削除（FiftyOneは個別sample削除）|
 | `cleanup_all.py --force --include-sandbox` | Sandbox含めてすべて削除 |
-| `cleanup_all.py --force --no-fiftyone` | FiftyOne以外を削除 |
+| `cleanup_all.py --force --no-fiftyone` | FiftyOne関連の削除をスキップ |
+| `cleanup_all.py --force --delete-entire-dataset` | データセット全体を削除 |
 
 ## 出力例
 
@@ -176,9 +188,16 @@ uv run python scripts/cleanup_all.py --force --fiftyone-dataset my-dataset
 
 ✓ 8ファイルを削除しました
 
-【FiftyOne Dataset】
-  - carla-scenarios
-✓ FiftyOneデータセット削除: carla-scenarios
+【FiftyOne Samples】
+  データセット: carla-scenarios
+  削除対象シナリオ数: 2
+  - 削除予定: logical_uuid_param_uuid.mp4
+
+✓ FiftyOneから2件のsampleを削除しました
+```
+
+**注**: デフォルトは個別sample削除です。`--delete-entire-dataset`を使うとデータセット全体を削除します。
+
 ```
 
 ## Makefileターゲット
