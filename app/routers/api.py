@@ -295,42 +295,23 @@ async def get_carla_status():
     return carla_manager.get_status()
 
 
-@router.post("/carla/settings", response_class=HTMLResponse)
-async def save_carla_settings(
-    carla_path: str = Form(...),
-    executable_name: str = Form(...),
-    default_port: int = Form(...),
-    default_map: str = Form(...),
-    quality_level: str = Form(...),
-    additional_args: str = Form(...),
-    timeout: int = Form(...),
-    auto_start: bool = Form(False)
-):
-    """CARLA設定を保存"""
+@router.post("/carla/settings")
+async def save_carla_settings(settings: CarlaSettings):
+    """CARLA設定を保存（JSONペイロード）"""
     carla_manager = get_carla_manager()
-
-    settings_dict = {
-        "carla_path": carla_path,
-        "executable_name": executable_name,
-        "default_port": default_port,
-        "default_map": default_map,
-        "quality_level": quality_level,
-        "additional_args": additional_args,
-        "timeout": timeout,
-        "auto_start": auto_start
-    }
+    settings_dict = settings.model_dump()
 
     try:
         updated = carla_manager.update_settings(settings_dict)
-        return HTMLResponse(
-            content='<div class="p-4 mb-4 text-green-700 bg-green-100 rounded-lg">'
-                    '設定を保存しました</div>'
-        )
+        return {
+            "success": True,
+            "message": "設定を保存しました",
+            "settings": updated.model_dump()
+        }
     except Exception as e:
-        return HTMLResponse(
-            content=f'<div class="p-4 mb-4 text-red-700 bg-red-100 rounded-lg">'
-                    f'エラー: {str(e)}</div>',
-            status_code=400
+        raise HTTPException(
+            status_code=400,
+            detail=f"設定の保存に失敗しました: {str(e)}"
         )
 
 

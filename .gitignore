@@ -46,6 +46,10 @@ htmlcov/
 # Scenario JSON files (abstract, logical, params, execution traces)
 data/scenarios/*.json
 
+# PEGASUS analysis results and temporary files
+data/scenarios/*.md
+data/scenarios/temp_*
+
 # Rerun logs
 data/rerun/*.rrd
 
