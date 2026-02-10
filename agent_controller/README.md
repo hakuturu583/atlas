@@ -28,89 +28,103 @@ agent_controller/
 
 ## 🚀 使い方
 
-### 推奨: AgentControllerを使う（最もシンプル）
+### 推奨: コールバックベース（最もシンプル）🆕
+
+コールバックを使うと、world.tick()やフレーム管理が不要になり、シナリオを直感的に記述できます。
 
 ```python
 from agent_controller import AgentController
 from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
 
-# AgentControllerが自動的に:
-# - CARLAに接続（リトライ機能付き）
-# - 同期モードを設定
-# - ログを初期化
-with AgentController(
-    scenario_uuid="my_scenario",
-    carla_host="localhost",
-    carla_port=2000,
-) as controller:
+with AgentController(scenario_uuid="my_scenario") as controller:
     world = controller.world
 
-    # 接続確認
-    if controller.is_alive():
-        print("✓ CARLA server is alive")
-
-    # 車両をスポーン
-    blueprint = world.get_blueprint_library().find("vehicle.tesla.model3")
-    od_map = OpenDriveMap(world)
-    spawn_helper = SpawnHelper(od_map)
-
-    lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
-    transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
+    # 車両をスポーン・登録
     vehicle = world.spawn_actor(blueprint, transform)
+    ego_id = controller.register_vehicle(vehicle)
+    npc_id = controller.register_vehicle(npc_vehicle)
 
-    # 車両を登録
-    vehicle_id = controller.register_vehicle(
-        vehicle=vehicle,
-        auto_lane_change=False,
-        distance_to_leading=5.0,
-        speed_percentage=80.0,
+    # コールバックでシナリオを定義（フレーム管理不要！）
+    controller.register_callback(
+        100,
+        lambda: controller.lane_change(ego_id, direction="left")
     )
 
-    # 高レベルAPIで振る舞いを実行
+    controller.register_callback(
+        200,
+        lambda: controller.cut_in(ego_id, target_vehicle_id=npc_id)
+    )
+
+    controller.register_callback(
+        350,
+        lambda: controller.follow(ego_id, target_vehicle_id=npc_id)
+    )
+
+    controller.register_callback(
+        550,
+        lambda: controller.stop(ego_id)
+    )
+
+    # シミュレーション実行（world.tick()は自動呼び出し）
+    controller.run_simulation(total_frames=600)
+
+    # 車両を破棄
+    vehicle.destroy()
+```
+
+### パターン2: on_tickコールバック🆕
+
+毎フレーム実行されるコールバックを使う方法：
+
+```python
+with AgentController(scenario_uuid="my_scenario") as controller:
+    # 車両をスポーン・登録
+    ego_id = controller.register_vehicle(vehicle)
+    npc_id = controller.register_vehicle(npc_vehicle)
+
+    # 毎フレーム呼ばれるコールバック
+    def on_tick(frame: int):
+        if frame == 100:
+            controller.lane_change(ego_id, direction="left")
+        elif frame == 200:
+            controller.cut_in(ego_id, target_vehicle_id=npc_id)
+        elif frame == 350:
+            controller.follow(ego_id, target_vehicle_id=npc_id)
+        elif frame == 550:
+            controller.stop(ego_id)
+
+    # シミュレーション実行
+    controller.run_simulation(total_frames=600, on_tick=on_tick)
+```
+
+### パターン3: 手動でworld.tick()を呼ぶ（従来の方法）
+
+```python
+with AgentController(scenario_uuid="my_scenario") as controller:
+    world = controller.world
+
+    # 車両を登録
+    ego_id = controller.register_vehicle(vehicle)
+
+    # 手動でフレーム管理
     frame = 0
+    for i in range(100):
+        world.tick()
+        frame += 1
 
     # レーンチェンジ
     result = controller.lane_change(
-        vehicle_id=vehicle_id,
+        vehicle_id=ego_id,
         frame=frame,
         direction="left",
         duration_frames=100,
     )
-    print(f"{result.message}")
 
-    # カットイン（他の車両が必要）
-    result = controller.cut_in(
-        vehicle_id=vehicle_id,
-        frame=frame + 100,
-        target_vehicle_id=other_vehicle_id,
-        gap_distance=3.0,
-        speed_boost=120.0,
-    )
+    for i in range(100):
+        world.tick()
+        frame += 1
 
-    # 追従
-    result = controller.follow(
-        vehicle_id=vehicle_id,
-        frame=frame + 200,
-        target_vehicle_id=lead_vehicle_id,
-        distance=5.0,
-        duration_frames=200,
-    )
-
-    # 停止
-    result = controller.stop(
-        vehicle_id=vehicle_id,
-        frame=frame + 400,
-        duration_frames=50,
-    )
-
-    # 車両を破棄
-    vehicle.destroy()
-
-# コンテキストマネージャを抜けると自動的に:
-# - ログがファイナライズ・保存される
-# - サマリーが出力される
-# - 同期モードが元に戻される
-# - クリーンアップが実行される
+    # ... 以下同様
 ```
 
 ### 低レベルAPI: TrafficManagerWrapperを直接使う（上級者向け）
@@ -201,13 +215,36 @@ if not controller.check_connection():
 - `get_vehicle_config(vehicle_id) -> Dict` - 車両設定を取得
 - `get_all_vehicles() -> list[int]` - 登録されているすべての車両IDを取得
 
+#### シミュレーションループとコールバック（🆕）
+
+- `run_simulation(total_frames, on_tick)` - シミュレーション実行（world.tick()を自動呼び出し）
+- `register_callback(frame, callback)` - 特定フレームで実行されるコールバックを登録
+- `set_tick_callback(callback)` - 毎フレーム実行されるコールバックを設定
+- `current_frame` - 現在のフレーム番号（プロパティ）
+- `tick(frames)` - 手動でWorld更新を実行（低レベルAPI）
+
+```python
+# パターン1: register_callbackを使用
+controller.register_callback(100, lambda: controller.lane_change(ego_id, direction="left"))
+controller.run_simulation(total_frames=500)
+
+# パターン2: on_tickコールバックを使用
+def on_tick(frame):
+    if frame == 100:
+        controller.lane_change(ego_id, direction="left")
+
+controller.run_simulation(total_frames=500, on_tick=on_tick)
+```
+
 #### 高レベル振る舞いメソッド
 
-- `lane_change(vehicle_id, frame, direction, duration_frames)` - レーンチェンジ
-- `cut_in(vehicle_id, frame, target_vehicle_id, gap_distance, speed_boost)` - カットイン
-- `timed_approach(vehicle_id, frame, target_location, target_time, ...)` - タイミング突入
-- `follow(vehicle_id, frame, target_vehicle_id, distance, duration_frames)` - 追従
-- `stop(vehicle_id, frame, duration_frames)` - 停止
+**重要**: frameパラメータは省略可能になりました（Noneの場合は現在のフレームを使用）。
+
+- `lane_change(vehicle_id, frame=None, direction, duration_frames)` - レーンチェンジ
+- `cut_in(vehicle_id, frame=None, target_vehicle_id, gap_distance, speed_boost)` - カットイン
+- `timed_approach(vehicle_id, frame=None, target_location, target_time, ...)` - タイミング突入
+- `follow(vehicle_id, frame=None, target_vehicle_id, distance, duration_frames)` - 追従
+- `stop(vehicle_id, frame=None, duration_frames)` - 停止
 
 #### 低レベルTraffic Manager設定メソッド
 

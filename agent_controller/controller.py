@@ -4,7 +4,7 @@ Agent Controller - 統合制御クラス
 すべての車両制御機能を単一のクラスから呼び出せる統合APIを提供します。
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable, List, Tuple
 import time
 import carla
 
@@ -126,6 +126,11 @@ class AgentController:
         self._timed_approach_behavior = None
         self._follow_behavior = None
         self._stop_behavior = None
+
+        # シミュレーションループ管理
+        self._current_frame = 0
+        self._callbacks: Dict[int, List[Callable[[], None]]] = {}
+        self._tick_callback: Optional[Callable[[int], None]] = None
 
     # ========================================
     # 接続管理
@@ -290,7 +295,7 @@ class AgentController:
     def lane_change(
         self,
         vehicle_id: int,
-        frame: int,
+        frame: Optional[int] = None,
         direction: str = "left",
         duration_frames: int = 100,
     ) -> BehaviorResult:
@@ -299,7 +304,7 @@ class AgentController:
 
         Args:
             vehicle_id: 車両ID
-            frame: 現在のフレーム番号
+            frame: フレーム番号（Noneの場合は現在のフレームを使用）
             direction: "left" or "right"
             duration_frames: 実行フレーム数
 
@@ -308,6 +313,9 @@ class AgentController:
         """
         if self._lane_change_behavior is None:
             self._lane_change_behavior = LaneChangeBehavior(self.tm_wrapper)
+
+        if frame is None:
+            frame = self._current_frame
 
         return self._lane_change_behavior.execute(
             vehicle_id=vehicle_id,
@@ -319,8 +327,8 @@ class AgentController:
     def cut_in(
         self,
         vehicle_id: int,
-        frame: int,
-        target_vehicle_id: int,
+        frame: Optional[int] = None,
+        target_vehicle_id: int = None,
         gap_distance: float = 5.0,
         speed_boost: float = 120.0,
     ) -> BehaviorResult:
@@ -329,7 +337,7 @@ class AgentController:
 
         Args:
             vehicle_id: 実行車両ID
-            frame: 現在のフレーム番号
+            frame: フレーム番号（Noneの場合は現在のフレームを使用）
             target_vehicle_id: カットイン対象車両ID
             gap_distance: 目標とする車間距離（m）
             speed_boost: 速度ブースト（%）
@@ -339,6 +347,9 @@ class AgentController:
         """
         if self._cut_in_behavior is None:
             self._cut_in_behavior = CutInBehavior(self.tm_wrapper)
+
+        if frame is None:
+            frame = self._current_frame
 
         return self._cut_in_behavior.execute(
             vehicle_id=vehicle_id,
@@ -351,9 +362,9 @@ class AgentController:
     def timed_approach(
         self,
         vehicle_id: int,
-        frame: int,
-        target_location: carla.Location,
-        target_time: float,
+        frame: Optional[int] = None,
+        target_location: carla.Location = None,
+        target_time: float = None,
         speed_adjustment: float = 1.0,
         ignore_traffic: bool = False,
     ) -> BehaviorResult:
@@ -362,7 +373,7 @@ class AgentController:
 
         Args:
             vehicle_id: 車両ID
-            frame: 現在のフレーム番号
+            frame: フレーム番号（Noneの場合は現在のフレームを使用）
             target_location: 目標地点
             target_time: 到達目標時刻（秒）
             speed_adjustment: 速度調整係数
@@ -373,6 +384,9 @@ class AgentController:
         """
         if self._timed_approach_behavior is None:
             self._timed_approach_behavior = TimedApproachBehavior(self.tm_wrapper)
+
+        if frame is None:
+            frame = self._current_frame
 
         return self._timed_approach_behavior.execute(
             vehicle_id=vehicle_id,
@@ -386,8 +400,8 @@ class AgentController:
     def follow(
         self,
         vehicle_id: int,
-        frame: int,
-        target_vehicle_id: int,
+        frame: Optional[int] = None,
+        target_vehicle_id: int = None,
         distance: float = 5.0,
         duration_frames: int = 200,
     ) -> BehaviorResult:
@@ -396,7 +410,7 @@ class AgentController:
 
         Args:
             vehicle_id: 車両ID
-            frame: 現在のフレーム番号
+            frame: フレーム番号（Noneの場合は現在のフレームを使用）
             target_vehicle_id: 追従対象車両ID
             distance: 追従距離（m）
             duration_frames: 追従フレーム数
@@ -406,6 +420,9 @@ class AgentController:
         """
         if self._follow_behavior is None:
             self._follow_behavior = FollowBehavior(self.tm_wrapper)
+
+        if frame is None:
+            frame = self._current_frame
 
         return self._follow_behavior.execute(
             vehicle_id=vehicle_id,
@@ -418,7 +435,7 @@ class AgentController:
     def stop(
         self,
         vehicle_id: int,
-        frame: int,
+        frame: Optional[int] = None,
         duration_frames: int = 50,
     ) -> BehaviorResult:
         """
@@ -426,7 +443,7 @@ class AgentController:
 
         Args:
             vehicle_id: 車両ID
-            frame: 現在のフレーム番号
+            frame: フレーム番号（Noneの場合は現在のフレームを使用）
             duration_frames: 停止フレーム数
 
         Returns:
@@ -435,11 +452,123 @@ class AgentController:
         if self._stop_behavior is None:
             self._stop_behavior = StopBehavior(self.tm_wrapper)
 
+        if frame is None:
+            frame = self._current_frame
+
         return self._stop_behavior.execute(
             vehicle_id=vehicle_id,
             frame=frame,
             duration_frames=duration_frames,
         )
+
+    # ========================================
+    # シミュレーションループとコールバック（🆕）
+    # ========================================
+
+    @property
+    def current_frame(self) -> int:
+        """現在のフレーム番号を取得"""
+        return self._current_frame
+
+    def register_callback(
+        self, frame: int, callback: Callable[[], None]
+    ) -> None:
+        """
+        特定フレームで実行されるコールバックを登録
+
+        Args:
+            frame: コールバックを実行するフレーム番号
+            callback: 実行する関数（引数なし）
+
+        使用例:
+            >>> def on_frame_100():
+            ...     controller.lane_change(ego_id, direction="left")
+            >>> controller.register_callback(100, on_frame_100)
+        """
+        if frame not in self._callbacks:
+            self._callbacks[frame] = []
+        self._callbacks[frame].append(callback)
+
+    def set_tick_callback(self, callback: Callable[[int], None]) -> None:
+        """
+        毎フレーム実行されるコールバックを設定
+
+        Args:
+            callback: フレーム番号を受け取る関数
+
+        使用例:
+            >>> def on_tick(frame):
+            ...     if frame == 100:
+            ...         controller.lane_change(ego_id, direction="left")
+            >>> controller.set_tick_callback(on_tick)
+        """
+        self._tick_callback = callback
+
+    def run_simulation(
+        self,
+        total_frames: int,
+        on_tick: Optional[Callable[[int], None]] = None,
+    ) -> None:
+        """
+        シミュレーションを実行（内部でworld.tick()を自動呼び出し）
+
+        Args:
+            total_frames: 実行するフレーム数
+            on_tick: 毎フレーム実行されるコールバック（オプション）
+
+        使用例:
+            >>> # パターン1: on_tickコールバックを使用
+            >>> def on_tick(frame):
+            ...     if frame == 100:
+            ...         controller.lane_change(ego_id, direction="left")
+            >>> controller.run_simulation(total_frames=500, on_tick=on_tick)
+
+            >>> # パターン2: register_callbackを使用
+            >>> controller.register_callback(100, lambda: controller.lane_change(ego_id, direction="left"))
+            >>> controller.run_simulation(total_frames=500)
+        """
+        if on_tick:
+            self.set_tick_callback(on_tick)
+
+        print(f"\n=== Starting Simulation ({total_frames} frames) ===\n")
+
+        for frame in range(total_frames):
+            self._current_frame = frame
+
+            # 特定フレームのコールバックを実行
+            if frame in self._callbacks:
+                for callback in self._callbacks[frame]:
+                    try:
+                        callback()
+                    except Exception as e:
+                        print(f"⚠ Error in callback at frame {frame}: {e}")
+
+            # 毎フレームのコールバックを実行
+            if self._tick_callback:
+                try:
+                    self._tick_callback(frame)
+                except Exception as e:
+                    print(f"⚠ Error in tick callback at frame {frame}: {e}")
+
+            # World更新
+            self.world.tick()
+
+            # 進捗表示（100フレームごと）
+            if frame > 0 and frame % 100 == 0:
+                print(f"  Frame {frame}/{total_frames}")
+
+        print(f"\n✓ Simulation completed ({total_frames} frames)\n")
+
+    def tick(self, frames: int = 1) -> None:
+        """
+        手動でWorld更新を実行（低レベルAPI）
+
+        Args:
+            frames: 更新するフレーム数
+        """
+        for _ in range(frames):
+            self.world.tick()
+            self._current_frame += 1
 
     # ========================================
     # 低レベルTraffic Manager設定

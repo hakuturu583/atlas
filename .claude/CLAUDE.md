@@ -837,30 +837,18 @@ uv run python scripts/analyze_scenarios.py <logical_uuid>
    - NPCロジックを統一し、実行パスを記録
    - 将来的にカバレッジ計測の基盤を提供
 
-### 基本的な使い方（推奨: AgentController）
+### 基本的な使い方（推奨: コールバックベース）🆕
 
-AgentControllerクラスを使うと、CARLAクライアント接続、同期モード設定、ロギング、クリーンアップがすべて自動化されます。
+コールバックを使うと、world.tick()やフレーム管理が不要になり、シナリオを最もシンプルに記述できます。
 
 ```python
 from agent_controller import AgentController
 from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
 
-# AgentControllerが自動的に:
-# - CARLAに接続（リトライ機能付き）
-# - 同期モードを設定
-# - ログを初期化
-with AgentController(
-    scenario_uuid="my_scenario",
-    carla_host="localhost",
-    carla_port=2000,
-) as controller:
+with AgentController(scenario_uuid="my_scenario") as controller:
     world = controller.world
 
-    # 接続確認
-    if controller.is_alive():
-        print("✓ CARLA server is alive")
-
-    # 車両をスポーン
+    # 車両をスポーン・登録
     blueprint = world.get_blueprint_library().find('vehicle.tesla.model3')
     od_map = OpenDriveMap(world)
     spawn_helper = SpawnHelper(od_map)
@@ -869,50 +857,32 @@ with AgentController(
     transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
     vehicle = world.spawn_actor(blueprint, transform)
 
-    # 車両を登録
-    vehicle_id = controller.register_vehicle(
-        vehicle=vehicle,
-        auto_lane_change=False,
-        distance_to_leading=5.0,
-        speed_percentage=80.0,
+    ego_id = controller.register_vehicle(vehicle)
+    npc_id = controller.register_vehicle(npc_vehicle)
+
+    # コールバックでシナリオを定義（フレーム管理不要！）
+    controller.register_callback(
+        100,
+        lambda: controller.lane_change(ego_id, direction="left")
     )
 
-    # 高レベルAPIで振る舞いを実行
-    frame = 0
-
-    # レーンチェンジ
-    result = controller.lane_change(
-        vehicle_id=vehicle_id,
-        frame=frame,
-        direction="left",
-        duration_frames=100,
-    )
-    print(f"{result.message}")
-
-    # カットイン
-    result = controller.cut_in(
-        vehicle_id=vehicle_id,
-        frame=frame + 100,
-        target_vehicle_id=other_vehicle_id,
-        gap_distance=3.0,
-        speed_boost=120.0,
+    controller.register_callback(
+        200,
+        lambda: controller.cut_in(ego_id, target_vehicle_id=npc_id)
     )
 
-    # 追従
-    result = controller.follow(
-        vehicle_id=vehicle_id,
-        frame=frame + 200,
-        target_vehicle_id=lead_vehicle_id,
-        distance=5.0,
-        duration_frames=200,
+    controller.register_callback(
+        350,
+        lambda: controller.follow(ego_id, target_vehicle_id=npc_id)
     )
 
-    # 停止
-    result = controller.stop(
-        vehicle_id=vehicle_id,
-        frame=frame + 400,
-        duration_frames=50,
+    controller.register_callback(
+        550,
+        lambda: controller.stop(ego_id)
     )
+
+    # シミュレーション実行（world.tick()は自動呼び出し）
+    controller.run_simulation(total_frames=600)
 
     # 車両を破棄
     vehicle.destroy()
@@ -922,6 +892,31 @@ with AgentController(
 # - サマリーが出力される
 # - 同期モードが元に戻される
 # - クリーンアップが実行される
+```
+
+### on_tickコールバックパターン
+
+毎フレーム実行されるコールバックを使う方法：
+
+```python
+with AgentController(scenario_uuid="my_scenario") as controller:
+    # 車両をスポーン・登録
+    ego_id = controller.register_vehicle(vehicle)
+    npc_id = controller.register_vehicle(npc_vehicle)
+
+    # 毎フレーム呼ばれるコールバック
+    def on_tick(frame: int):
+        if frame == 100:
+            controller.lane_change(ego_id, direction="left")
+        elif frame == 200:
+            controller.cut_in(ego_id, target_vehicle_id=npc_id)
+        elif frame == 350:
+            controller.follow(ego_id, target_vehicle_id=npc_id)
+        elif frame == 550:
+            controller.stop(ego_id)
+
+    # シミュレーション実行
+    controller.run_simulation(total_frames=600, on_tick=on_tick)
 ```
 
 ### 接続管理機能（🆕）
@@ -1076,7 +1071,8 @@ agent_controllerに必要な機能が不足している場合：
 ### 参考資料
 
 - **詳細ドキュメント**: `agent_controller/README.md`
-- **使用例（推奨）**: `examples/agent_controller_simple.py` - AgentControllerを使った最もシンプルな例
+- **使用例（推奨・最新）**: `examples/agent_controller_callback.py` - コールバックを使った最もシンプルな例 🆕
+- **使用例（シンプル）**: `examples/agent_controller_simple.py` - AgentControllerの基本的な使い方
 - **使用例（詳細）**: `examples/agent_controller_example.py` - すべての機能を使った例
 - **APIリファレンス**: 各モジュールのdocstring参照
 

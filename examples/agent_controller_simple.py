@@ -75,74 +75,46 @@ def main():
             )
             print(f"  NPC vehicle registered: ID={npc_id}")
 
-            # シミュレーション実行
-            print("\n=== Starting Simulation ===\n")
-            frame = 0
+            # シナリオをコールバックで定義（フレーム管理不要！）
+            print("\n=== Defining Scenario ===\n")
 
-            # Phase 1: 通常走行（100フレーム）
-            print("Phase 1: Normal driving...")
-            for i in range(100):
-                world.tick()
-                frame += 1
-
-            # Phase 2: レーンチェンジ
-            print("\nPhase 2: Lane change...")
-            result = controller.lane_change(
-                vehicle_id=ego_id,
-                frame=frame,
-                direction="left",
-                duration_frames=100,
+            # フレーム100: レーンチェンジ
+            controller.register_callback(
+                100,
+                lambda: print("Phase 2: Lane change...")
+                or controller.lane_change(ego_id, direction="left", duration_frames=100),
             )
-            print(f"  {result.message}")
 
-            for i in range(100):
-                world.tick()
-                frame += 1
-
-            # Phase 3: カットイン
-            print("\nPhase 3: Cut in...")
-            result = controller.cut_in(
-                vehicle_id=ego_id,
-                frame=frame,
-                target_vehicle_id=npc_id,
-                gap_distance=3.0,
-                speed_boost=120.0,
+            # フレーム200: カットイン
+            controller.register_callback(
+                200,
+                lambda: print("\nPhase 3: Cut in...")
+                or controller.cut_in(
+                    ego_id,
+                    target_vehicle_id=npc_id,
+                    gap_distance=3.0,
+                    speed_boost=120.0,
+                ),
             )
-            print(f"  {result.message}")
 
-            for i in range(150):
-                world.tick()
-                frame += 1
-
-            # Phase 4: 追従
-            print("\nPhase 4: Following...")
-            result = controller.follow(
-                vehicle_id=ego_id,
-                frame=frame,
-                target_vehicle_id=npc_id,
-                distance=5.0,
-                duration_frames=200,
+            # フレーム350: 追従
+            controller.register_callback(
+                350,
+                lambda: print("\nPhase 4: Following...")
+                or controller.follow(
+                    ego_id, target_vehicle_id=npc_id, distance=5.0, duration_frames=200
+                ),
             )
-            print(f"  {result.message}")
 
-            for i in range(200):
-                world.tick()
-                frame += 1
-
-            # Phase 5: 停止
-            print("\nPhase 5: Stopping...")
-            result = controller.stop(
-                vehicle_id=ego_id,
-                frame=frame,
-                duration_frames=50,
+            # フレーム550: 停止
+            controller.register_callback(
+                550,
+                lambda: print("\nPhase 5: Stopping...")
+                or controller.stop(ego_id, duration_frames=50),
             )
-            print(f"  {result.message}")
 
-            for i in range(50):
-                world.tick()
-                frame += 1
-
-            print(f"\nSimulation completed. Total frames: {frame}")
+            # シミュレーション実行（world.tick()は自動的に呼ばれる）
+            controller.run_simulation(total_frames=600)
 
             # 車両を破棄
             ego_vehicle.destroy()
