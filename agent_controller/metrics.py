@@ -79,6 +79,10 @@ class SafetyMetrics:
         self._prev_velocity: Dict[int, carla.Vector3D] = {}
         self._prev_acceleration: Dict[int, float] = {}
 
+        # 前回の状態（状態遷移検出用）
+        # vehicle_id -> {event_type: was_triggered}
+        self._prev_states: Dict[int, Dict[str, bool]] = {}
+
     def update(
         self,
         frame: int,
@@ -106,6 +110,8 @@ class SafetyMetrics:
             self.acceleration_history[vehicle_id] = []
         if vehicle_id not in self.min_distances:
             self.min_distances[vehicle_id] = float("inf")
+        if vehicle_id not in self._prev_states:
+            self._prev_states[vehicle_id] = {}
 
         # 現在の状態を取得
         velocity = vehicle.get_velocity()
@@ -121,7 +127,13 @@ class SafetyMetrics:
             self.acceleration_history[vehicle_id].append(acceleration)
 
             # 急ブレーキ検出（負の加速度 = 減速）
-            if acceleration < -self.config.sudden_braking_threshold:
+            is_sudden_braking = acceleration < -self.config.sudden_braking_threshold
+            prev_sudden_braking = self._prev_states[vehicle_id].get(
+                "sudden_braking", False
+            )
+
+            # 状態遷移（false → true）のときだけ記録
+            if is_sudden_braking and not prev_sudden_braking:
                 self.events.append(
                     MetricsEvent(
                         frame=frame,
@@ -135,8 +147,19 @@ class SafetyMetrics:
                     )
                 )
 
+            # 現在の状態を保存
+            self._prev_states[vehicle_id]["sudden_braking"] = is_sudden_braking
+
             # 急加速検出
-            if acceleration > self.config.sudden_acceleration_threshold:
+            is_sudden_acceleration = (
+                acceleration > self.config.sudden_acceleration_threshold
+            )
+            prev_sudden_acceleration = self._prev_states[vehicle_id].get(
+                "sudden_acceleration", False
+            )
+
+            # 状態遷移（false → true）のときだけ記録
+            if is_sudden_acceleration and not prev_sudden_acceleration:
                 self.events.append(
                     MetricsEvent(
                         frame=frame,
@@ -150,21 +173,32 @@ class SafetyMetrics:
                     )
                 )
 
+            # 現在の状態を保存
+            self._prev_states[vehicle_id]["sudden_acceleration"] = is_sudden_acceleration
+
             # ジャーク検出
             jerk = self._calculate_jerk(vehicle_id, acceleration)
-            if jerk is not None and abs(jerk) > self.config.jerk_threshold:
-                self.events.append(
-                    MetricsEvent(
-                        frame=frame,
-                        timestamp=timestamp,
-                        event_type="high_jerk",
-                        vehicle_id=vehicle_id,
-                        value=abs(jerk),
-                        threshold=self.config.jerk_threshold,
-                        description=f"高ジャーク検出: {abs(jerk):.2f} m/s³",
-                        location=(location.x, location.y, location.z),
+            if jerk is not None:
+                is_high_jerk = abs(jerk) > self.config.jerk_threshold
+                prev_high_jerk = self._prev_states[vehicle_id].get("high_jerk", False)
+
+                # 状態遷移（false → true）のときだけ記録
+                if is_high_jerk and not prev_high_jerk:
+                    self.events.append(
+                        MetricsEvent(
+                            frame=frame,
+                            timestamp=timestamp,
+                            event_type="high_jerk",
+                            vehicle_id=vehicle_id,
+                            value=abs(jerk),
+                            threshold=self.config.jerk_threshold,
+                            description=f"高ジャーク検出: {abs(jerk):.2f} m/s³",
+                            location=(location.x, location.y, location.z),
+                        )
                     )
-                )
+
+                # 現在の状態を保存
+                self._prev_states[vehicle_id]["high_jerk"] = is_high_jerk
 
         # TTC計算（前方車両）
         ttc = self._calculate_ttc(vehicle, world)
@@ -172,7 +206,11 @@ class SafetyMetrics:
             self.ttc_history[vehicle_id].append(ttc)
 
             # TTC閾値違反検出
-            if ttc < self.config.ttc_threshold:
+            is_low_ttc = ttc < self.config.ttc_threshold
+            prev_low_ttc = self._prev_states[vehicle_id].get("low_ttc", False)
+
+            # 状態遷移（false → true）のときだけ記録
+            if is_low_ttc and not prev_low_ttc:
                 self.events.append(
                     MetricsEvent(
                         frame=frame,
@@ -186,6 +224,9 @@ class SafetyMetrics:
                     )
                 )
 
+            # 現在の状態を保存
+            self._prev_states[vehicle_id]["low_ttc"] = is_low_ttc
+
         # 最小車間距離を更新
         min_distance = self._calculate_min_distance_to_leading(vehicle, world)
         if min_distance is not None:
@@ -193,7 +234,15 @@ class SafetyMetrics:
                 self.min_distances[vehicle_id] = min_distance
 
             # 最小車間距離閾値違反検出
-            if min_distance < self.config.min_distance_threshold:
+            is_min_distance_violation = (
+                min_distance < self.config.min_distance_threshold
+            )
+            prev_min_distance_violation = self._prev_states[vehicle_id].get(
+                "min_distance_violation", False
+            )
+
+            # 状態遷移（false → true）のときだけ記録
+            if is_min_distance_violation and not prev_min_distance_violation:
                 self.events.append(
                     MetricsEvent(
                         frame=frame,
@@ -206,6 +255,11 @@ class SafetyMetrics:
                         location=(location.x, location.y, location.z),
                     )
                 )
+
+            # 現在の状態を保存
+            self._prev_states[vehicle_id]["min_distance_violation"] = (
+                is_min_distance_violation
+            )
 
         # 前回データを保存
         self._prev_velocity[vehicle_id] = velocity
