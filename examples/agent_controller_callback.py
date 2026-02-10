@@ -1,9 +1,10 @@
 """
-agent_controller コールバックベース使用例
+agent_controller トリガー関数ベース使用例
 
-AgentControllerのコールバック機能を使って、
-シナリオをシンプルに記述する方法を示します。
-world.tick()は自動的に呼ばれるため、フレーム管理が不要になります。
+AgentControllerのトリガー関数を使って、
+シナリオを宣言的に記述する方法を示します。
+world.tick()は自動的に呼ばれ、トリガー条件が満たされたときに
+コールバックが実行されます。
 """
 
 import sys
@@ -69,9 +70,9 @@ def main():
         print(f"  NPC vehicle registered: ID={npc_id}")
 
         # ========================================
-        # パターン1: register_callbackを使用
+        # パターン1: トリガー関数を使用（推奨）
         # ========================================
-        print("\n=== Pattern 1: Using register_callback ===")
+        print("\n=== Pattern 1: Using Trigger Functions (Recommended) ===")
 
         # フレーム100でレーンチェンジ
         def on_frame_100():
@@ -114,11 +115,35 @@ def main():
             )
             print(f"  {result.message}")
 
-        # コールバックを登録
-        controller.register_callback(100, on_frame_100)
-        controller.register_callback(200, on_frame_200)
-        controller.register_callback(350, on_frame_350)
-        controller.register_callback(550, on_frame_550)
+        # トリガー関数でコールバックを登録
+        controller.register_callback(
+            controller.when_timestep_equals(100), on_frame_100
+        )
+        controller.register_callback(
+            controller.when_timestep_equals(200), on_frame_200
+        )
+        controller.register_callback(
+            controller.when_timestep_equals(350), on_frame_350
+        )
+        controller.register_callback(
+            controller.when_timestep_equals(550), on_frame_550
+        )
+
+        # より高度なトリガー例
+        print("\n=== Advanced Trigger Examples ===")
+
+        # 車両間距離が10m以下になったら警告（リピート）
+        controller.register_callback(
+            controller.when_distance_between(ego_id, npc_id, 10.0, operator="less"),
+            lambda: print("⚠ Warning: Distance less than 10m!"),
+            one_shot=False,  # リピート実行
+        )
+
+        # 速度が100km/hを超えたら警告
+        controller.register_callback(
+            controller.when_speed_greater_than(ego_id, 100.0),
+            lambda: print("⚠ Warning: Speed exceeded 100 km/h!"),
+        )
 
         # シミュレーション実行（自動的にworld.tick()が呼ばれる）
         controller.run_simulation(total_frames=600)

@@ -129,7 +129,9 @@ class AgentController:
 
         # シミュレーションループ管理
         self._current_frame = 0
-        self._callbacks: Dict[int, List[Callable[[], None]]] = {}
+        self._callbacks: List[Tuple[Callable[[], bool], Callable[[], None], bool]] = (
+            []
+        )  # (trigger_fn, callback_fn, one_shot)
         self._tick_callback: Optional[Callable[[int], None]] = None
 
     # ========================================
@@ -470,24 +472,208 @@ class AgentController:
         """現在のフレーム番号を取得"""
         return self._current_frame
 
-    def register_callback(
-        self, frame: int, callback: Callable[[], None]
-    ) -> None:
+    # ========================================
+    # トリガー関数（条件判定）
+    # ========================================
+
+    def when_timestep_equals(self, frame: int) -> Callable[[], bool]:
         """
-        特定フレームで実行されるコールバックを登録
+        特定のタイムステップ（フレーム）に到達したときにTrueを返すトリガー関数
 
         Args:
-            frame: コールバックを実行するフレーム番号
-            callback: 実行する関数（引数なし）
+            frame: トリガーするフレーム番号
+
+        Returns:
+            条件判定関数
 
         使用例:
-            >>> def on_frame_100():
-            ...     controller.lane_change(ego_id, direction="left")
-            >>> controller.register_callback(100, on_frame_100)
+            >>> controller.register_callback(
+            ...     controller.when_timestep_equals(100),
+            ...     lambda: controller.lane_change(ego_id, direction="left")
+            ... )
         """
-        if frame not in self._callbacks:
-            self._callbacks[frame] = []
-        self._callbacks[frame].append(callback)
+
+        def trigger():
+            return self._current_frame == frame
+
+        return trigger
+
+    def when_timestep_greater_than(self, frame: int) -> Callable[[], bool]:
+        """
+        タイムステップが指定値を超えたときにTrueを返すトリガー関数
+
+        Args:
+            frame: 比較するフレーム番号
+
+        Returns:
+            条件判定関数
+        """
+
+        def trigger():
+            return self._current_frame > frame
+
+        return trigger
+
+    def when_vehicle_at_location(
+        self,
+        vehicle_id: int,
+        target_location: carla.Location,
+        threshold: float = 5.0,
+    ) -> Callable[[], bool]:
+        """
+        車両が特定の位置に到達したときにTrueを返すトリガー関数
+
+        Args:
+            vehicle_id: 車両ID
+            target_location: 目標位置
+            threshold: 距離の閾値（m）
+
+        Returns:
+            条件判定関数
+        """
+
+        def trigger():
+            vehicle = self.get_vehicle(vehicle_id)
+            if vehicle is None:
+                return False
+            current_location = vehicle.get_location()
+            distance = current_location.distance(target_location)
+            return distance <= threshold
+
+        return trigger
+
+    def when_distance_between(
+        self,
+        vehicle_id1: int,
+        vehicle_id2: int,
+        distance: float,
+        operator: str = "less",
+    ) -> Callable[[], bool]:
+        """
+        2つの車両間の距離が条件を満たすときにTrueを返すトリガー関数
+
+        Args:
+            vehicle_id1: 車両1のID
+            vehicle_id2: 車両2のID
+            distance: 比較する距離（m）
+            operator: 比較演算子 ("less", "greater", "equal")
+
+        Returns:
+            条件判定関数
+        """
+
+        def trigger():
+            vehicle1 = self.get_vehicle(vehicle_id1)
+            vehicle2 = self.get_vehicle(vehicle_id2)
+            if vehicle1 is None or vehicle2 is None:
+                return False
+
+            loc1 = vehicle1.get_location()
+            loc2 = vehicle2.get_location()
+            current_distance = loc1.distance(loc2)
+
+            if operator == "less":
+                return current_distance < distance
+            elif operator == "greater":
+                return current_distance > distance
+            elif operator == "equal":
+                return abs(current_distance - distance) < 0.5
+            else:
+                return False
+
+        return trigger
+
+    def when_speed_greater_than(
+        self, vehicle_id: int, speed: float
+    ) -> Callable[[], bool]:
+        """
+        車両の速度が閾値を超えたときにTrueを返すトリガー関数
+
+        Args:
+            vehicle_id: 車両ID
+            speed: 速度の閾値（km/h）
+
+        Returns:
+            条件判定関数
+        """
+
+        def trigger():
+            vehicle = self.get_vehicle(vehicle_id)
+            if vehicle is None:
+                return False
+            velocity = vehicle.get_velocity()
+            current_speed = (
+                3.6 * (velocity.x**2 + velocity.y**2 + velocity.z**2) ** 0.5
+            )
+            return current_speed > speed
+
+        return trigger
+
+    def when_speed_less_than(
+        self, vehicle_id: int, speed: float
+    ) -> Callable[[], bool]:
+        """
+        車両の速度が閾値を下回ったときにTrueを返すトリガー関数
+
+        Args:
+            vehicle_id: 車両ID
+            speed: 速度の閾値（km/h）
+
+        Returns:
+            条件判定関数
+        """
+
+        def trigger():
+            vehicle = self.get_vehicle(vehicle_id)
+            if vehicle is None:
+                return False
+            velocity = vehicle.get_velocity()
+            current_speed = (
+                3.6 * (velocity.x**2 + velocity.y**2 + velocity.z**2) ** 0.5
+            )
+            return current_speed < speed
+
+        return trigger
+
+    # ========================================
+    # コールバック登録
+    # ========================================
+
+    def register_callback(
+        self,
+        trigger: Callable[[], bool],
+        callback: Callable[[], None],
+        one_shot: bool = True,
+    ) -> None:
+        """
+        トリガー条件が満たされたときに実行されるコールバックを登録
+
+        Args:
+            trigger: 条件判定関数（Trueを返すとコールバックが実行される）
+            callback: 実行する関数（引数なし）
+            one_shot: Trueの場合、一度実行したら自動削除（デフォルト: True）
+
+        使用例:
+            >>> # パターン1: 特定フレームで実行
+            >>> controller.register_callback(
+            ...     controller.when_timestep_equals(100),
+            ...     lambda: controller.lane_change(ego_id, direction="left")
+            ... )
+
+            >>> # パターン2: 車両が位置に到達したら実行
+            >>> controller.register_callback(
+            ...     controller.when_vehicle_at_location(ego_id, target_location),
+            ...     lambda: print("Target reached!")
+            ... )
+
+            >>> # パターン3: 継続的に監視（リピート）
+            >>> controller.register_callback(
+            ...     controller.when_speed_greater_than(ego_id, 80.0),
+            ...     lambda: print("Speeding!"),
+            ...     one_shot=False
+            ... )
+        """
+        self._callbacks.append((trigger, callback, one_shot))
 
     def set_tick_callback(self, callback: Callable[[int], None]) -> None:
         """
@@ -517,15 +703,18 @@ class AgentController:
             on_tick: 毎フレーム実行されるコールバック（オプション）
 
         使用例:
-            >>> # パターン1: on_tickコールバックを使用
+            >>> # パターン1: トリガー関数を使用（推奨）
+            >>> controller.register_callback(
+            ...     controller.when_timestep_equals(100),
+            ...     lambda: controller.lane_change(ego_id, direction="left")
+            ... )
+            >>> controller.run_simulation(total_frames=500)
+
+            >>> # パターン2: on_tickコールバックを使用
             >>> def on_tick(frame):
             ...     if frame == 100:
             ...         controller.lane_change(ego_id, direction="left")
             >>> controller.run_simulation(total_frames=500, on_tick=on_tick)
-
-            >>> # パターン2: register_callbackを使用
-            >>> controller.register_callback(100, lambda: controller.lane_change(ego_id, direction="left"))
-            >>> controller.run_simulation(total_frames=500)
         """
         if on_tick:
             self.set_tick_callback(on_tick)
@@ -535,13 +724,27 @@ class AgentController:
         for frame in range(total_frames):
             self._current_frame = frame
 
-            # 特定フレームのコールバックを実行
-            if frame in self._callbacks:
-                for callback in self._callbacks[frame]:
-                    try:
-                        callback()
-                    except Exception as e:
-                        print(f"⚠ Error in callback at frame {frame}: {e}")
+            # トリガーベースのコールバックを評価・実行
+            callbacks_to_remove = []
+            for i, (trigger, callback, one_shot) in enumerate(self._callbacks):
+                try:
+                    # トリガー条件を評価
+                    if trigger():
+                        # コールバックを実行
+                        try:
+                            callback()
+                        except Exception as e:
+                            print(f"⚠ Error in callback at frame {frame}: {e}")
+
+                        # ワンショットの場合は削除リストに追加
+                        if one_shot:
+                            callbacks_to_remove.append(i)
+                except Exception as e:
+                    print(f"⚠ Error evaluating trigger at frame {frame}: {e}")
+
+            # ワンショットコールバックを削除（逆順で削除）
+            for i in reversed(callbacks_to_remove):
+                self._callbacks.pop(i)
 
             # 毎フレームのコールバックを実行
             if self._tick_callback:

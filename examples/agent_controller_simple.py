@@ -75,19 +75,19 @@ def main():
             )
             print(f"  NPC vehicle registered: ID={npc_id}")
 
-            # シナリオをコールバックで定義（フレーム管理不要！）
+            # シナリオをトリガー関数で定義（フレーム管理不要！）
             print("\n=== Defining Scenario ===\n")
 
             # フレーム100: レーンチェンジ
             controller.register_callback(
-                100,
+                controller.when_timestep_equals(100),
                 lambda: print("Phase 2: Lane change...")
                 or controller.lane_change(ego_id, direction="left", duration_frames=100),
             )
 
             # フレーム200: カットイン
             controller.register_callback(
-                200,
+                controller.when_timestep_equals(200),
                 lambda: print("\nPhase 3: Cut in...")
                 or controller.cut_in(
                     ego_id,
@@ -99,7 +99,7 @@ def main():
 
             # フレーム350: 追従
             controller.register_callback(
-                350,
+                controller.when_timestep_equals(350),
                 lambda: print("\nPhase 4: Following...")
                 or controller.follow(
                     ego_id, target_vehicle_id=npc_id, distance=5.0, duration_frames=200
@@ -108,7 +108,7 @@ def main():
 
             # フレーム550: 停止
             controller.register_callback(
-                550,
+                controller.when_timestep_equals(550),
                 lambda: print("\nPhase 5: Stopping...")
                 or controller.stop(ego_id, duration_frames=50),
             )

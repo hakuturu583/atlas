@@ -28,9 +28,9 @@ agent_controller/
 
 ## 🚀 使い方
 
-### 推奨: コールバックベース（最もシンプル）🆕
+### 推奨: トリガー関数ベース（最もシンプル＆拡張性が高い）🆕
 
-コールバックを使うと、world.tick()やフレーム管理が不要になり、シナリオを直感的に記述できます。
+トリガー関数を使うと、world.tick()やフレーム管理が不要になり、シナリオを宣言的に記述できます。
 
 ```python
 from agent_controller import AgentController
@@ -44,25 +44,32 @@ with AgentController(scenario_uuid="my_scenario") as controller:
     ego_id = controller.register_vehicle(vehicle)
     npc_id = controller.register_vehicle(npc_vehicle)
 
-    # コールバックでシナリオを定義（フレーム管理不要！）
+    # トリガー関数でシナリオを定義（フレーム管理不要！）
     controller.register_callback(
-        100,
+        controller.when_timestep_equals(100),
         lambda: controller.lane_change(ego_id, direction="left")
     )
 
     controller.register_callback(
-        200,
+        controller.when_timestep_equals(200),
         lambda: controller.cut_in(ego_id, target_vehicle_id=npc_id)
     )
 
     controller.register_callback(
-        350,
+        controller.when_timestep_equals(350),
         lambda: controller.follow(ego_id, target_vehicle_id=npc_id)
     )
 
     controller.register_callback(
-        550,
+        controller.when_timestep_equals(550),
         lambda: controller.stop(ego_id)
+    )
+
+    # 高度なトリガー: 車両間距離が10m以下になったら警告
+    controller.register_callback(
+        controller.when_distance_between(ego_id, npc_id, 10.0, operator="less"),
+        lambda: print("⚠ Too close!"),
+        one_shot=False  # リピート実行
     )
 
     # シミュレーション実行（world.tick()は自動呼び出し）
@@ -215,17 +222,66 @@ if not controller.check_connection():
 - `get_vehicle_config(vehicle_id) -> Dict` - 車両設定を取得
 - `get_all_vehicles() -> list[int]` - 登録されているすべての車両IDを取得
 
+#### トリガー関数（条件判定）🆕
+
+トリガー関数は、条件が満たされたときにTrueを返す関数を生成します。
+
+**タイムステップベース:**
+- `when_timestep_equals(frame)` - 特定フレームに到達
+- `when_timestep_greater_than(frame)` - フレームが指定値を超える
+
+**位置ベース:**
+- `when_vehicle_at_location(vehicle_id, location, threshold)` - 車両が位置に到達
+
+**距離ベース:**
+- `when_distance_between(vehicle_id1, vehicle_id2, distance, operator)` - 車両間距離が条件を満たす
+  - operator: "less", "greater", "equal"
+
+**速度ベース:**
+- `when_speed_greater_than(vehicle_id, speed)` - 速度が閾値を超える
+- `when_speed_less_than(vehicle_id, speed)` - 速度が閾値を下回る
+
+```python
+# 特定フレームで実行
+controller.register_callback(
+    controller.when_timestep_equals(100),
+    lambda: controller.lane_change(ego_id, direction="left")
+)
+
+# 車両が位置に到達したら実行
+controller.register_callback(
+    controller.when_vehicle_at_location(ego_id, target_location, threshold=5.0),
+    lambda: print("Target reached!")
+)
+
+# 車両間距離が条件を満たしたら実行（リピート）
+controller.register_callback(
+    controller.when_distance_between(ego_id, npc_id, 10.0, operator="less"),
+    lambda: print("⚠ Too close!"),
+    one_shot=False  # 継続的に監視
+)
+
+# 速度が閾値を超えたら実行
+controller.register_callback(
+    controller.when_speed_greater_than(ego_id, 80.0),
+    lambda: print("⚠ Speeding!")
+)
+```
+
 #### シミュレーションループとコールバック（🆕）
 
 - `run_simulation(total_frames, on_tick)` - シミュレーション実行（world.tick()を自動呼び出し）
-- `register_callback(frame, callback)` - 特定フレームで実行されるコールバックを登録
+- `register_callback(trigger, callback, one_shot)` - トリガー条件でコールバックを登録
 - `set_tick_callback(callback)` - 毎フレーム実行されるコールバックを設定
 - `current_frame` - 現在のフレーム番号（プロパティ）
 - `tick(frames)` - 手動でWorld更新を実行（低レベルAPI）
 
 ```python
-# パターン1: register_callbackを使用
-controller.register_callback(100, lambda: controller.lane_change(ego_id, direction="left"))
+# パターン1: トリガー関数を使用（推奨）
+controller.register_callback(
+    controller.when_timestep_equals(100),
+    lambda: controller.lane_change(ego_id, direction="left")
+)
 controller.run_simulation(total_frames=500)
 
 # パターン2: on_tickコールバックを使用

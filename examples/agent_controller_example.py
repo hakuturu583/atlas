@@ -76,10 +76,10 @@ def main():
         print(f"  NPC vehicle registered: ID={npc_id}")
 
         # ========================================
-        # シナリオをコールバックで定義
+        # シナリオをトリガー関数で定義
         # （world.tick()とフレーム管理が不要！）
         # ========================================
-        print("\n=== Defining Scenario with Callbacks ===\n")
+        print("\n=== Defining Scenario with Trigger Functions ===\n")
 
         # Phase 1は通常走行（フレーム0-99）なのでコールバックなし
 
@@ -97,7 +97,7 @@ def main():
                     f"  Distance traveled: {result.metrics['distance_traveled']:.2f}m"
                 )
 
-        controller.register_callback(100, on_frame_100)
+        controller.register_callback(controller.when_timestep_equals(100), on_frame_100)
 
         # Phase 3: フレーム200でカットイン
         def on_frame_200():
@@ -110,7 +110,7 @@ def main():
             )
             print(f"  {result.message}")
 
-        controller.register_callback(200, on_frame_200)
+        controller.register_callback(controller.when_timestep_equals(200), on_frame_200)
 
         # Phase 4: フレーム350で追従
         def on_frame_350():
@@ -123,7 +123,7 @@ def main():
             )
             print(f"  {result.message}")
 
-        controller.register_callback(350, on_frame_350)
+        controller.register_callback(controller.when_timestep_equals(350), on_frame_350)
 
         # Phase 5: フレーム550で停止
         def on_frame_550():
@@ -134,7 +134,7 @@ def main():
             )
             print(f"  {result.message}")
 
-        controller.register_callback(550, on_frame_550)
+        controller.register_callback(controller.when_timestep_equals(550), on_frame_550)
 
         # ========================================
         # シミュレーション実行

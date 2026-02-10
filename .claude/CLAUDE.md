@@ -837,9 +837,9 @@ uv run python scripts/analyze_scenarios.py <logical_uuid>
    - NPCロジックを統一し、実行パスを記録
    - 将来的にカバレッジ計測の基盤を提供
 
-### 基本的な使い方（推奨: コールバックベース）🆕
+### 基本的な使い方（推奨: トリガー関数ベース）🆕
 
-コールバックを使うと、world.tick()やフレーム管理が不要になり、シナリオを最もシンプルに記述できます。
+トリガー関数を使うと、world.tick()やフレーム管理が不要になり、シナリオを宣言的に記述できます。
 
 ```python
 from agent_controller import AgentController
@@ -860,25 +860,32 @@ with AgentController(scenario_uuid="my_scenario") as controller:
     ego_id = controller.register_vehicle(vehicle)
     npc_id = controller.register_vehicle(npc_vehicle)
 
-    # コールバックでシナリオを定義（フレーム管理不要！）
+    # トリガー関数でシナリオを定義（フレーム管理不要！）
     controller.register_callback(
-        100,
+        controller.when_timestep_equals(100),
         lambda: controller.lane_change(ego_id, direction="left")
     )
 
     controller.register_callback(
-        200,
+        controller.when_timestep_equals(200),
         lambda: controller.cut_in(ego_id, target_vehicle_id=npc_id)
     )
 
     controller.register_callback(
-        350,
+        controller.when_timestep_equals(350),
         lambda: controller.follow(ego_id, target_vehicle_id=npc_id)
     )
 
     controller.register_callback(
-        550,
+        controller.when_timestep_equals(550),
         lambda: controller.stop(ego_id)
+    )
+
+    # 高度なトリガー: 車両間距離が10m以下になったら警告（リピート）
+    controller.register_callback(
+        controller.when_distance_between(ego_id, npc_id, 10.0, operator="less"),
+        lambda: print("⚠ Too close!"),
+        one_shot=False
     )
 
     # シミュレーション実行（world.tick()は自動呼び出し）
@@ -892,6 +899,16 @@ with AgentController(scenario_uuid="my_scenario") as controller:
 # - サマリーが出力される
 # - 同期モードが元に戻される
 # - クリーンアップが実行される
+```
+
+### 利用可能なトリガー関数
+
+- `when_timestep_equals(frame)` - 特定フレームに到達
+- `when_timestep_greater_than(frame)` - フレームが指定値を超える
+- `when_vehicle_at_location(vehicle_id, location, threshold)` - 車両が位置に到達
+- `when_distance_between(vehicle_id1, vehicle_id2, distance, operator)` - 車両間距離が条件を満たす
+- `when_speed_greater_than(vehicle_id, speed)` - 速度が閾値を超える
+- `when_speed_less_than(vehicle_id, speed)` - 速度が閾値を下回る
 ```
 
 ### on_tickコールバックパターン
