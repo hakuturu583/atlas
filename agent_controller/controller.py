@@ -19,6 +19,7 @@ from .behaviors import (
 )
 from .stamp_logger import STAMPLogger, ControlAction, StateType
 from .command_tracker import CommandTracker, CommandStatus
+from .vehicle_config import VehicleConfig
 
 
 class AgentController:
@@ -270,6 +271,7 @@ class AgentController:
         transform: carla.Transform,
         auto_register: bool = True,
         auto_destroy: bool = True,
+        config: Optional[VehicleConfig] = None,
         **register_kwargs,
     ) -> Tuple[carla.Vehicle, Optional[int]]:
         """
@@ -280,20 +282,32 @@ class AgentController:
             transform: スポーン位置
             auto_register: Trueの場合、自動的にTraffic Managerに登録
             auto_destroy: Trueの場合、デストラクタで自動的に破棄
-            **register_kwargs: register_vehicle()に渡す追加パラメータ
+            config: 車両設定（VehicleConfig）
+            **register_kwargs: register_vehicle()に渡す追加パラメータ（configより優先）
 
         Returns:
             (車両アクター, 車両ID)
             ※ auto_register=Falseの場合、車両IDはNone
 
         使用例:
+            >>> # パターン1: VehicleConfigを使用（推奨）
+            >>> from agent_controller import VehicleConfig
+            >>> config = VehicleConfig(
+            ...     auto_lane_change=False,
+            ...     speed_percentage=80.0
+            ... )
             >>> vehicle, vehicle_id = controller.spawn_vehicle(
             ...     "vehicle.tesla.model3",
             ...     transform,
-            ...     auto_register=True,
+            ...     config=config
+            ... )
+
+            >>> # パターン2: キーワード引数を使用
+            >>> vehicle, vehicle_id = controller.spawn_vehicle(
+            ...     "vehicle.tesla.model3",
+            ...     transform,
             ...     speed_percentage=80.0
             ... )
-            # with文を抜けると自動的に破棄される
         """
         blueprint_library = self.get_blueprint_library()
         blueprint = blueprint_library.find(blueprint_name)
@@ -304,7 +318,15 @@ class AgentController:
             self._spawned_vehicles.append(vehicle)
 
         if auto_register:
-            vehicle_id = self.register_vehicle(vehicle, **register_kwargs)
+            # VehicleConfigがある場合は、その設定を使用
+            if config:
+                kwargs = config.to_dict()
+                # キーワード引数で上書き
+                kwargs.update(register_kwargs)
+            else:
+                kwargs = register_kwargs
+
+            vehicle_id = self.register_vehicle(vehicle, **kwargs)
             return vehicle, vehicle_id
         else:
             return vehicle, None
@@ -315,6 +337,7 @@ class AgentController:
         lane_coord: "LaneCoord",
         auto_register: bool = True,
         auto_destroy: bool = True,
+        config: Optional[VehicleConfig] = None,
         **register_kwargs,
     ) -> Tuple[carla.Vehicle, Optional[int]]:
         """
@@ -325,20 +348,34 @@ class AgentController:
             lane_coord: レーン座標（LaneCoord）
             auto_register: Trueの場合、自動的にTraffic Managerに登録
             auto_destroy: Trueの場合、デストラクタで自動的に破棄
-            **register_kwargs: register_vehicle()に渡す追加パラメータ
+            config: 車両設定（VehicleConfig）
+            **register_kwargs: register_vehicle()に渡す追加パラメータ（configより優先）
 
         Returns:
             (車両アクター, 車両ID)
 
         使用例:
+            >>> # パターン1: VehicleConfigを使用（推奨）
             >>> from opendrive_utils import LaneCoord
+            >>> from agent_controller import VehicleConfig
             >>> lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+            >>> config = VehicleConfig(
+            ...     auto_lane_change=False,
+            ...     speed_percentage=80.0
+            ... )
             >>> vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
             ...     "vehicle.tesla.model3",
             ...     lane_coord,
-            ...     speed_percentage=80.0
+            ...     config=config
             ... )
-            # with文を抜けると自動的に破棄される
+
+            >>> # パターン2: プリセットを使用
+            >>> from agent_controller import CAUTIOUS_DRIVER
+            >>> vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
+            ...     "vehicle.tesla.model3",
+            ...     lane_coord,
+            ...     config=CAUTIOUS_DRIVER
+            ... )
         """
         from opendrive_utils import OpenDriveMap, SpawnHelper
 
@@ -347,7 +384,12 @@ class AgentController:
         transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
 
         return self.spawn_vehicle(
-            blueprint_name, transform, auto_register, auto_destroy, **register_kwargs
+            blueprint_name,
+            transform,
+            auto_register,
+            auto_destroy,
+            config,
+            **register_kwargs,
         )
 
     def destroy_vehicle(self, vehicle_id: int) -> bool:

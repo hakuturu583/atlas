@@ -11,7 +11,7 @@ from pathlib import Path
 # agent_controllerをインポート
 sys.path.append(str(Path(__file__).parent.parent))
 
-from agent_controller import AgentController
+from agent_controller import AgentController, VehicleConfig, CAUTIOUS_DRIVER
 from opendrive_utils import LaneCoord
 
 
@@ -36,15 +36,22 @@ def main():
         # 車両をスポーン（自動登録）
         print("Spawning vehicles...")
 
+        # Ego車両の設定
+        ego_config = VehicleConfig(
+            auto_lane_change=False,
+            distance_to_leading=5.0,
+            speed_percentage=80.0,
+        )
+
+        # NPC車両の設定（プリセットを使用）
+        npc_config = CAUTIOUS_DRIVER  # 慎重なドライバー
+
         # Ego車両（レーン座標から自動スポーン＆登録）
         lane_coord_1 = LaneCoord(road_id=10, lane_id=-1, s=50.0)
         ego_vehicle, ego_id = controller.spawn_vehicle_from_lane(
             "vehicle.tesla.model3",
             lane_coord_1,
-            auto_register=True,
-            auto_lane_change=False,
-            distance_to_leading=5.0,
-            speed_percentage=80.0,
+            config=ego_config,
         )
         print(f"  Ego vehicle spawned: ID={ego_id}")
 
@@ -53,10 +60,7 @@ def main():
         npc_vehicle, npc_id = controller.spawn_vehicle_from_lane(
             "vehicle.tesla.model3",
             lane_coord_2,
-            auto_register=True,
-            auto_lane_change=True,
-            distance_to_leading=3.0,
-            speed_percentage=60.0,
+            config=npc_config,
         )
         print(f"  NPC vehicle spawned: ID={npc_id}")
 

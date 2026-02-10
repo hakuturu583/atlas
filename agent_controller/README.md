@@ -33,23 +33,31 @@ agent_controller/
 トリガー関数を使うと、world.tick()やフレーム管理が不要になり、シナリオを宣言的に記述できます。
 
 ```python
-from agent_controller import AgentController
+from agent_controller import AgentController, VehicleConfig, CAUTIOUS_DRIVER
 from opendrive_utils import LaneCoord
 
 with AgentController(scenario_uuid="my_scenario") as controller:
+    # 車両設定を定義
+    ego_config = VehicleConfig(
+        auto_lane_change=False,
+        distance_to_leading=5.0,
+        speed_percentage=80.0,
+    )
+
     # 車両をスポーン（自動登録）
     lane_coord_1 = LaneCoord(road_id=10, lane_id=-1, s=50.0)
     ego_vehicle, ego_id = controller.spawn_vehicle_from_lane(
         "vehicle.tesla.model3",
         lane_coord_1,
-        speed_percentage=80.0,
+        config=ego_config,
     )
 
+    # プリセットを使ってNPC車両をスポーン
     lane_coord_2 = LaneCoord(road_id=10, lane_id=-1, s=80.0)
     npc_vehicle, npc_id = controller.spawn_vehicle_from_lane(
         "vehicle.tesla.model3",
         lane_coord_2,
-        speed_percentage=60.0,
+        config=CAUTIOUS_DRIVER,  # 慎重なドライバー
     )
 
     # トリガー関数でシナリオを定義（フレーム管理不要！）
@@ -187,6 +195,56 @@ tm_wrapper.cleanup()
 
 ## 📚 API リファレンス
 
+### VehicleConfig（車両設定）🆕
+
+車両のTraffic Manager設定をまとめたデータクラス。型安全で読みやすいコードを実現します。
+
+```python
+from agent_controller import VehicleConfig
+
+# カスタム設定
+config = VehicleConfig(
+    auto_lane_change=False,      # 自動レーンチェンジ
+    distance_to_leading=5.0,     # 前方車両との距離（m）
+    speed_percentage=80.0,       # 制限速度に対する速度（%）
+    ignore_lights=False,         # 信号無視
+    ignore_vehicles=False,       # 他車両無視
+    ignore_signs=False,          # 標識無視
+)
+
+vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
+    "vehicle.tesla.model3",
+    lane_coord,
+    config=config
+)
+```
+
+#### プリセット設定
+
+よく使われる設定がプリセットとして用意されています：
+
+- `NORMAL_DRIVER` - 通常のドライバー（デフォルト設定）
+- `CAUTIOUS_DRIVER` - 慎重なドライバー（車間距離が長く、速度が遅い）
+- `AGGRESSIVE_DRIVER` - アグレッシブなドライバー（車間距離が短く、速度が速い）
+- `RECKLESS_DRIVER` - 無謀なドライバー（すべての交通ルールを無視）
+
+```python
+from agent_controller import CAUTIOUS_DRIVER, AGGRESSIVE_DRIVER
+
+# プリセットを使用
+cautious_vehicle, _ = controller.spawn_vehicle_from_lane(
+    "vehicle.tesla.model3",
+    lane_coord,
+    config=CAUTIOUS_DRIVER
+)
+
+aggressive_vehicle, _ = controller.spawn_vehicle_from_lane(
+    "vehicle.audi.a2",
+    lane_coord,
+    config=AGGRESSIVE_DRIVER
+)
+```
+
 ### AgentController（推奨）
 
 統合コントローラークラス。CARLAクライアント接続、Traffic Manager、ロギング機能を統合。
@@ -231,36 +289,54 @@ if not controller.check_connection():
 
 - `get_blueprint_library() -> carla.BlueprintLibrary` - ブループリントライブラリを取得
 - `get_map() -> carla.Map` - CARLAマップを取得
-- `spawn_vehicle(blueprint_name, transform, auto_register, auto_destroy, **kwargs) -> (Vehicle, int)` - 車両をスポーン
-- `spawn_vehicle_from_lane(blueprint_name, lane_coord, auto_register, auto_destroy, **kwargs) -> (Vehicle, int)` - レーン座標から車両をスポーン
+- `spawn_vehicle(blueprint_name, transform, auto_register, auto_destroy, config, **kwargs) -> (Vehicle, int)` - 車両をスポーン
+- `spawn_vehicle_from_lane(blueprint_name, lane_coord, auto_register, auto_destroy, config, **kwargs) -> (Vehicle, int)` - レーン座標から車両をスポーン
 - `destroy_vehicle(vehicle_id) -> bool` - 車両を破棄（通常は不要、自動破棄される）
 
 ```python
-# レーン座標から車両をスポーン（推奨）
+# パターン1: VehicleConfigを使用（推奨）
 from opendrive_utils import LaneCoord
+from agent_controller import VehicleConfig
+
+config = VehicleConfig(
+    auto_lane_change=False,
+    distance_to_leading=5.0,
+    speed_percentage=80.0,
+)
+
 lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
 vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
     "vehicle.tesla.model3",
     lane_coord,
+    config=config,
     auto_register=True,   # 自動的にTraffic Managerに登録
     auto_destroy=True,    # デストラクタで自動破棄（デフォルト）
-    speed_percentage=80.0
 )
 
-# Transform指定で車両をスポーン
-vehicle, vehicle_id = controller.spawn_vehicle(
+# パターン2: プリセットを使用
+from agent_controller import CAUTIOUS_DRIVER
+
+vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
     "vehicle.tesla.model3",
-    transform,
-    auto_register=True,
-    auto_destroy=True,
-    speed_percentage=80.0
+    lane_coord,
+    config=CAUTIOUS_DRIVER,
+)
+
+# パターン3: キーワード引数を使用（後方互換性）
+vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
+    "vehicle.tesla.model3",
+    lane_coord,
+    speed_percentage=80.0,
+    auto_lane_change=False,
 )
 
 # 車両を破棄（通常は不要、with文を抜けると自動破棄される）
 controller.destroy_vehicle(vehicle_id)
 ```
 
-**重要**: `auto_destroy=True`（デフォルト）の場合、コンテキストマネージャを抜けると自動的に車両が破棄されます。明示的な破棄は不要です。
+**重要**:
+- `auto_destroy=True`（デフォルト）の場合、コンテキストマネージャを抜けると自動的に車両が破棄されます。
+- VehicleConfigを使うことで型安全で読みやすいコードになります（推奨）。
 
 #### 車両登録・管理メソッド
 

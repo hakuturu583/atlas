@@ -846,19 +846,27 @@ from agent_controller import AgentController
 from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
 
 with AgentController(scenario_uuid="my_scenario") as controller:
+    # 車両設定を定義
+    ego_config = VehicleConfig(
+        auto_lane_change=False,
+        distance_to_leading=5.0,
+        speed_percentage=80.0,
+    )
+
     # 車両をスポーン（自動登録）
     lane_coord_1 = LaneCoord(road_id=10, lane_id=-1, s=50.0)
     ego_vehicle, ego_id = controller.spawn_vehicle_from_lane(
         "vehicle.tesla.model3",
         lane_coord_1,
-        speed_percentage=80.0,
+        config=ego_config,
     )
 
+    # プリセットを使ってNPC車両をスポーン
     lane_coord_2 = LaneCoord(road_id=10, lane_id=-1, s=80.0)
     npc_vehicle, npc_id = controller.spawn_vehicle_from_lane(
         "vehicle.tesla.model3",
         lane_coord_2,
-        speed_percentage=60.0,
+        config=CAUTIOUS_DRIVER,  # 慎重なドライバー
     )
 
     # トリガー関数でシナリオを定義（フレーム管理不要！）

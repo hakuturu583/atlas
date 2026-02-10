@@ -34,6 +34,13 @@ agent_controller - CARLA Traffic Manager Wrapper Package
 
 # メインAPI（推奨）
 from .controller import AgentController
+from .vehicle_config import (
+    VehicleConfig,
+    AGGRESSIVE_DRIVER,
+    CAUTIOUS_DRIVER,
+    RECKLESS_DRIVER,
+    NORMAL_DRIVER,
+)
 
 # 低レベルAPI（上級ユーザー向け）
 from .traffic_manager_wrapper import TrafficManagerWrapper
@@ -51,6 +58,12 @@ from .command_tracker import CommandTracker, CommandStatus
 __all__ = [
     # メインAPI
     "AgentController",
+    "VehicleConfig",
+    # プリセット
+    "AGGRESSIVE_DRIVER",
+    "CAUTIOUS_DRIVER",
+    "RECKLESS_DRIVER",
+    "NORMAL_DRIVER",
     # 低レベルAPI
     "TrafficManagerWrapper",
     "LaneChangeBehavior",
