@@ -1093,7 +1093,7 @@ class AgentController:
 
         if self.metrics:
             metrics_log_path = str(self.metrics.finalize())
-            self.metrics.print_summary()
+            self.metrics._print_summary()
 
         return stamp_log_path, command_log_path, metrics_log_path
 

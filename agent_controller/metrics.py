@@ -68,12 +68,12 @@ class SafetyMetrics:
         self.scenario_uuid = scenario_uuid
         self.config = config or MetricsConfig()
 
-        # メトリクスデータ
-        self.events: List[MetricsEvent] = []
-        self.ttc_history: Dict[int, List[float]] = {}  # vehicle_id -> TTC履歴
-        self.speed_history: Dict[int, List[float]] = {}  # vehicle_id -> 速度履歴
-        self.acceleration_history: Dict[int, List[float]] = {}  # vehicle_id -> 加速度履歴
-        self.min_distances: Dict[int, float] = {}  # vehicle_id -> 最小車間距離
+        # メトリクスデータ（プライベート）
+        self._events: List[MetricsEvent] = []
+        self._ttc_history: Dict[int, List[float]] = {}  # vehicle_id -> TTC履歴
+        self._speed_history: Dict[int, List[float]] = {}  # vehicle_id -> 速度履歴
+        self._acceleration_history: Dict[int, List[float]] = {}  # vehicle_id -> 加速度履歴
+        self._min_distances: Dict[int, float] = {}  # vehicle_id -> 最小車間距離
 
         # 前回のフレームデータ（差分計算用）
         self._prev_velocity: Dict[int, carla.Vector3D] = {}
@@ -102,14 +102,14 @@ class SafetyMetrics:
         vehicle_id = vehicle.id
 
         # 初期化
-        if vehicle_id not in self.ttc_history:
-            self.ttc_history[vehicle_id] = []
-        if vehicle_id not in self.speed_history:
-            self.speed_history[vehicle_id] = []
-        if vehicle_id not in self.acceleration_history:
-            self.acceleration_history[vehicle_id] = []
-        if vehicle_id not in self.min_distances:
-            self.min_distances[vehicle_id] = float("inf")
+        if vehicle_id not in self._ttc_history:
+            self._ttc_history[vehicle_id] = []
+        if vehicle_id not in self._speed_history:
+            self._speed_history[vehicle_id] = []
+        if vehicle_id not in self._acceleration_history:
+            self._acceleration_history[vehicle_id] = []
+        if vehicle_id not in self._min_distances:
+            self._min_distances[vehicle_id] = float("inf")
         if vehicle_id not in self._prev_states:
             self._prev_states[vehicle_id] = {}
 
@@ -119,12 +119,12 @@ class SafetyMetrics:
         location = vehicle.get_location()
 
         # 速度履歴に追加
-        self.speed_history[vehicle_id].append(speed)
+        self._speed_history[vehicle_id].append(speed)
 
         # 加速度を計算
         acceleration = self._calculate_acceleration(vehicle_id, velocity, timestamp)
         if acceleration is not None:
-            self.acceleration_history[vehicle_id].append(acceleration)
+            self._acceleration_history[vehicle_id].append(acceleration)
 
             # 急ブレーキ検出（負の加速度 = 減速）
             is_sudden_braking = acceleration < -self.config.sudden_braking_threshold
@@ -134,7 +134,7 @@ class SafetyMetrics:
 
             # 状態遷移（false → true）のときだけ記録
             if is_sudden_braking and not prev_sudden_braking:
-                self.events.append(
+                self._events.append(
                     MetricsEvent(
                         frame=frame,
                         timestamp=timestamp,
@@ -160,7 +160,7 @@ class SafetyMetrics:
 
             # 状態遷移（false → true）のときだけ記録
             if is_sudden_acceleration and not prev_sudden_acceleration:
-                self.events.append(
+                self._events.append(
                     MetricsEvent(
                         frame=frame,
                         timestamp=timestamp,
@@ -184,7 +184,7 @@ class SafetyMetrics:
 
                 # 状態遷移（false → true）のときだけ記録
                 if is_high_jerk and not prev_high_jerk:
-                    self.events.append(
+                    self._events.append(
                         MetricsEvent(
                             frame=frame,
                             timestamp=timestamp,
@@ -203,7 +203,7 @@ class SafetyMetrics:
         # TTC計算（前方車両）
         ttc = self._calculate_ttc(vehicle, world)
         if ttc is not None:
-            self.ttc_history[vehicle_id].append(ttc)
+            self._ttc_history[vehicle_id].append(ttc)
 
             # TTC閾値違反検出
             is_low_ttc = ttc < self.config.ttc_threshold
@@ -211,7 +211,7 @@ class SafetyMetrics:
 
             # 状態遷移（false → true）のときだけ記録
             if is_low_ttc and not prev_low_ttc:
-                self.events.append(
+                self._events.append(
                     MetricsEvent(
                         frame=frame,
                         timestamp=timestamp,
@@ -230,8 +230,8 @@ class SafetyMetrics:
         # 最小車間距離を更新
         min_distance = self._calculate_min_distance_to_leading(vehicle, world)
         if min_distance is not None:
-            if min_distance < self.min_distances[vehicle_id]:
-                self.min_distances[vehicle_id] = min_distance
+            if min_distance < self._min_distances[vehicle_id]:
+                self._min_distances[vehicle_id] = min_distance
 
             # 最小車間距離閾値違反検出
             is_min_distance_violation = (
@@ -243,7 +243,7 @@ class SafetyMetrics:
 
             # 状態遷移（false → true）のときだけ記録
             if is_min_distance_violation and not prev_min_distance_violation:
-                self.events.append(
+                self._events.append(
                     MetricsEvent(
                         frame=frame,
                         timestamp=timestamp,
@@ -461,7 +461,7 @@ class SafetyMetrics:
                     "description": event.description,
                     "location": event.location,
                 }
-                for event in self.events
+                for event in self._events
             ],
         }
 
@@ -471,27 +471,27 @@ class SafetyMetrics:
         return str(output_path)
 
     def _calculate_summary(self) -> dict:
-        """サマリー統計を計算"""
+        """サマリー統計を計算（プライベート）"""
         event_counts = {}
-        for event in self.events:
+        for event in self._events:
             event_type = event.event_type
             event_counts[event_type] = event_counts.get(event_type, 0) + 1
 
         # 最小TTCを計算
         min_ttc_per_vehicle = {}
-        for vehicle_id, ttc_list in self.ttc_history.items():
+        for vehicle_id, ttc_list in self._ttc_history.items():
             if ttc_list:
                 min_ttc_per_vehicle[vehicle_id] = min(ttc_list)
 
         return {
-            "total_events": len(self.events),
+            "total_events": len(self._events),
             "event_counts": event_counts,
             "min_ttc_per_vehicle": min_ttc_per_vehicle,
-            "min_distances": self.min_distances,
+            "min_distances": self._min_distances,
         }
 
-    def print_summary(self):
-        """サマリーをコンソールに出力"""
+    def _print_summary(self):
+        """サマリーをコンソールに出力（プライベート）"""
         summary = self._calculate_summary()
 
         print("\n" + "=" * 60)
@@ -522,28 +522,3 @@ class SafetyMetrics:
             print("    (データなし)")
 
         print("=" * 60 + "\n")
-
-    def get_events_by_type(self, event_type: str) -> List[MetricsEvent]:
-        """特定タイプのイベントを取得"""
-        return [event for event in self.events if event.event_type == event_type]
-
-    def get_semantic_coverage(self) -> dict:
-        """
-        意味論的カバレッジを計算
-
-        Returns:
-            カバレッジ辞書（各イベントタイプの発生有無）
-        """
-        coverage = {
-            "sudden_braking": False,
-            "sudden_acceleration": False,
-            "high_jerk": False,
-            "low_ttc": False,
-            "min_distance_violation": False,
-        }
-
-        for event in self.events:
-            if event.event_type in coverage:
-                coverage[event.event_type] = True
-
-        return coverage
