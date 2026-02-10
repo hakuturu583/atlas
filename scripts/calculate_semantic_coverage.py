@@ -44,11 +44,19 @@ class SemanticCoverageCalculator:
         self.event_types = EVENT_TYPES
         self.n_events = len(self.event_types)
 
-        # カバレッジ行列（N x N）
-        # 縦軸: Unsafe状態のイベントタイプ
-        # 横軸: Safe状態のイベントタイプ
-        # 対角成分のみが有効（同じイベントタイプ内の遷移）
-        self.coverage_matrix = np.zeros((self.n_events, self.n_events), dtype=int)
+        # カバレッジ行列（2N x 2N）
+        # 縦軸（To）: 遷移後の状態
+        #   - 行 0 ~ N-1: Safe状態
+        #   - 行 N ~ 2N-1: Unsafe状態
+        # 横軸（From）: 遷移前の状態
+        #   - 列 0 ~ N-1: Safe状態
+        #   - 列 N ~ 2N-1: Unsafe状態
+        #
+        # 有効セル:
+        #   - Safe => Unsafe: [N+i, i] (i = 0 to N-1) → N個
+        #   - Unsafe => Safe: [i, N+i] (i = 0 to N-1) → N個
+        #   - 合計: 2N個
+        self.coverage_matrix = np.zeros((2 * self.n_events, 2 * self.n_events), dtype=int)
 
         # 各イベントタイプのインデックス
         self.event_index = {event: i for i, event in enumerate(self.event_types)}
@@ -72,15 +80,15 @@ class SemanticCoverageCalculator:
                 continue
 
             idx = self.event_index[event_type]
+            N = self.n_events
 
-            # 対角成分のみをカウント（同じイベントタイプ内の遷移）
+            # Safe => Unsafe: 行[N+idx]（Unsafe）、列[idx]（Safe）
             if transition == "safe_to_unsafe":
-                # Safe => Unsafe（行: Unsafe、列: Safe → 対角成分）
-                self.coverage_matrix[idx, idx] += 1
+                self.coverage_matrix[N + idx, idx] += 1
+
+            # Unsafe => Safe: 行[idx]（Safe）、列[N+idx]（Unsafe）
             elif transition == "unsafe_to_safe":
-                # Unsafe => Safe（行: Unsafe、列: Safe → 対角成分）
-                # 注: 両方向の遷移を同じセルにカウント
-                self.coverage_matrix[idx, idx] += 1
+                self.coverage_matrix[idx, N + idx] += 1
 
     def calculate_coverage(self) -> Tuple[int, int, float]:
         """
@@ -89,13 +97,23 @@ class SemanticCoverageCalculator:
         Returns:
             (カバーされたセル数, 有効セル数, カバレッジ率)
         """
-        # 有効セル = 対角成分のみ（同じイベントタイプ内の遷移）
-        valid_cells = self.n_events
+        N = self.n_events
 
-        # カバーされたセル = 対角成分でカウントが1以上のセル
+        # 有効セル = 2N個
+        # - Safe => Unsafe: N個
+        # - Unsafe => Safe: N個
+        valid_cells = 2 * N
+
+        # カバーされたセル数をカウント
         covered_cells = 0
-        for i in range(self.n_events):
-            if self.coverage_matrix[i, i] > 0:
+
+        for i in range(N):
+            # Safe => Unsafe: [N+i, i]
+            if self.coverage_matrix[N + i, i] > 0:
+                covered_cells += 1
+
+            # Unsafe => Safe: [i, N+i]
+            if self.coverage_matrix[i, N + i] > 0:
                 covered_cells += 1
 
         # カバレッジ率
@@ -110,7 +128,7 @@ class SemanticCoverageCalculator:
         print("=" * 80)
 
         # ヘッダー
-        print("\n対角成分のみが有効（同じイベントタイプ内の Safe <=> Unsafe 遷移）\n")
+        print("\n各イベントタイプについて、Safe => Unsafe と Unsafe => Safe を別セルとして集計\n")
 
         # イベントタイプ名の短縮版
         short_names = {
@@ -121,16 +139,27 @@ class SemanticCoverageCalculator:
             "min_distance_violation": "最小車間距離",
         }
 
-        # 表のヘッダー
-        print(f"{'イベントタイプ':<20} | 遷移数")
-        print("-" * 40)
+        N = self.n_events
 
-        # 対角成分のみ表示
+        # 表のヘッダー
+        print(f"{'イベントタイプ':<20} | Safe=>Unsafe | Unsafe=>Safe")
+        print("-" * 60)
+
+        # 各イベントタイプの遷移を表示
         for i, event_type in enumerate(self.event_types):
             short_name = short_names.get(event_type, event_type)
-            count = self.coverage_matrix[i, i]
-            status = "✓" if count > 0 else "✗"
-            print(f"{status} {short_name:<18} | {count:>6}")
+
+            # Safe => Unsafe: [N+i, i]
+            safe_to_unsafe = self.coverage_matrix[N + i, i]
+            s2u_status = "✓" if safe_to_unsafe > 0 else "✗"
+
+            # Unsafe => Safe: [i, N+i]
+            unsafe_to_safe = self.coverage_matrix[i, N + i]
+            u2s_status = "✓" if unsafe_to_safe > 0 else "✗"
+
+            print(
+                f"{short_name:<20} | {s2u_status} {safe_to_unsafe:>10} | {u2s_status} {unsafe_to_safe:>10}"
+            )
 
         print("=" * 80 + "\n")
 
@@ -145,11 +174,22 @@ class SemanticCoverageCalculator:
         print(f"\nカバーされたセル: {covered} / {valid}")
         print(f"カバレッジ率: {rate * 100:.1f}%")
 
+        N = self.n_events
+
         print("\n各イベントタイプの状態遷移:")
         for i, event_type in enumerate(self.event_types):
-            count = self.coverage_matrix[i, i]
-            if count > 0:
-                print(f"  ✓ {event_type}: {count} 回の遷移")
+            # Safe => Unsafe: [N+i, i]
+            safe_to_unsafe = self.coverage_matrix[N + i, i]
+
+            # Unsafe => Safe: [i, N+i]
+            unsafe_to_safe = self.coverage_matrix[i, N + i]
+
+            total = safe_to_unsafe + unsafe_to_safe
+
+            if total > 0:
+                print(
+                    f"  ✓ {event_type}: Safe=>Unsafe {safe_to_unsafe}回, Unsafe=>Safe {unsafe_to_safe}回"
+                )
             else:
                 print(f"  ✗ {event_type}: 遷移なし")
 
