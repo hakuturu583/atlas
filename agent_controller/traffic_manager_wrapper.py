@@ -35,6 +35,7 @@ class TrafficManagerWrapper:
             command_tracker: コマンドトラッカー（オプション）
         """
         self.client = client
+        self.tm_port = port
         self.tm = client.get_trafficmanager(port)
         self.tm.set_synchronous_mode(True)
 

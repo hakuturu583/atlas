@@ -5,6 +5,7 @@ Agent Controller - 統合制御クラス
 """
 
 from typing import Optional, Dict, Any
+import time
 import carla
 
 from .traffic_manager_wrapper import TrafficManagerWrapper
@@ -24,35 +25,84 @@ class AgentController:
     """
     統合車両制御クラス
 
-    CARLA Traffic Managerをラップし、高レベルAPIとロギング機能を提供する
-    単一のインターフェースです。
+    CARLA接続、Traffic Manager、ロギング機能を統合した単一のインターフェースです。
+    CARLAクライアントの接続と生存管理も自動的に行います。
 
-    使用例:
-        >>> controller = AgentController(client, scenario_uuid="my-scenario")
-        >>> vehicle_id = controller.register_vehicle(vehicle)
-        >>> controller.lane_change(vehicle_id, frame=100, direction="left")
-        >>> controller.finalize()
+    使用例（推奨）:
+        >>> with AgentController(scenario_uuid="my-scenario") as controller:
+        ...     world = controller.world
+        ...     vehicle = world.spawn_actor(blueprint, transform)
+        ...     vehicle_id = controller.register_vehicle(vehicle)
+        ...     controller.lane_change(vehicle_id, frame=100, direction="left")
+
+    使用例（既存のクライアントを使う場合）:
+        >>> client = carla.Client("localhost", 2000)
+        >>> with AgentController(client=client, scenario_uuid="my-scenario") as controller:
+        ...     # ...
     """
 
     def __init__(
         self,
-        client: carla.Client,
         scenario_uuid: str,
+        client: Optional[carla.Client] = None,
+        carla_host: str = "localhost",
+        carla_port: int = 2000,
+        carla_timeout: float = 10.0,
         tm_port: int = 8000,
         enable_logging: bool = True,
+        synchronous_mode: bool = True,
+        fixed_delta_seconds: float = 0.05,
+        max_retries: int = 3,
+        retry_delay: float = 2.0,
     ):
         """
         AgentControllerを初期化
 
         Args:
-            client: CARLAクライアント
             scenario_uuid: シナリオUUID
+            client: 既存のCARLAクライアント（Noneの場合は自動接続）
+            carla_host: CARLAサーバーのホスト（clientがNoneの場合に使用）
+            carla_port: CARLAサーバーのポート（clientがNoneの場合に使用）
+            carla_timeout: 接続タイムアウト（秒）
             tm_port: Traffic Managerのポート
             enable_logging: ロギングを有効化するか
+            synchronous_mode: 同期モードを有効化するか
+            fixed_delta_seconds: 固定タイムステップ（秒）
+            max_retries: 接続失敗時の最大リトライ回数
+            retry_delay: リトライ間の待機時間（秒）
         """
-        self.client = client
         self.scenario_uuid = scenario_uuid
         self.enable_logging = enable_logging
+        self.synchronous_mode = synchronous_mode
+        self.fixed_delta_seconds = fixed_delta_seconds
+        self._carla_host = carla_host
+        self._carla_port = carla_port
+        self._carla_timeout = carla_timeout
+        self._tm_port = tm_port
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
+
+        # CARLAクライアントの管理
+        self._owns_client = client is None
+        if self._owns_client:
+            # 新しいクライアントを作成（リトライ付き）
+            self.client = self._connect_with_retry()
+        else:
+            # 既存のクライアントを使用
+            self.client = client
+
+        # Worldを取得
+        self.world = self.client.get_world()
+
+        # 同期モード設定を保存（終了時に復元するため）
+        self._original_settings = self.world.get_settings()
+
+        # 同期モードを設定
+        if synchronous_mode:
+            settings = self.world.get_settings()
+            settings.synchronous_mode = True
+            settings.fixed_delta_seconds = fixed_delta_seconds
+            self.world.apply_settings(settings)
 
         # ロガー初期化
         if enable_logging:
@@ -64,7 +114,7 @@ class AgentController:
 
         # Traffic Manager Wrapper初期化
         self.tm_wrapper = TrafficManagerWrapper(
-            client=client,
+            client=self.client,
             port=tm_port,
             stamp_logger=self.stamp_logger,
             command_tracker=self.command_tracker,
@@ -76,6 +126,111 @@ class AgentController:
         self._timed_approach_behavior = None
         self._follow_behavior = None
         self._stop_behavior = None
+
+    # ========================================
+    # 接続管理
+    # ========================================
+
+    def _connect_with_retry(self) -> carla.Client:
+        """
+        CARLAクライアントに接続（リトライ付き）
+
+        Returns:
+            CARLAクライアント
+
+        Raises:
+            RuntimeError: 最大リトライ回数を超えた場合
+        """
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                print(
+                    f"Connecting to CARLA at {self._carla_host}:{self._carla_port} (attempt {attempt}/{self._max_retries})..."
+                )
+                client = carla.Client(self._carla_host, self._carla_port)
+                client.set_timeout(self._carla_timeout)
+
+                # 接続を確認（worldを取得してみる）
+                _ = client.get_world()
+
+                print(f"✓ Successfully connected to CARLA")
+                return client
+
+            except RuntimeError as e:
+                if attempt < self._max_retries:
+                    print(
+                        f"✗ Connection failed: {e}. Retrying in {self._retry_delay}s..."
+                    )
+                    time.sleep(self._retry_delay)
+                else:
+                    raise RuntimeError(
+                        f"Failed to connect to CARLA after {self._max_retries} attempts: {e}"
+                    )
+
+    def check_connection(self) -> bool:
+        """
+        CARLAサーバーへの接続が有効か確認
+
+        Returns:
+            接続が有効ならTrue
+        """
+        try:
+            # worldを取得して接続を確認
+            _ = self.client.get_world()
+            return True
+        except RuntimeError:
+            return False
+
+    def reconnect(self) -> bool:
+        """
+        CARLAサーバーに再接続（自分で接続を管理している場合のみ）
+
+        Returns:
+            再接続に成功したらTrue
+
+        Raises:
+            RuntimeError: 自分で接続を管理していない場合、または再接続に失敗した場合
+        """
+        if not self._owns_client:
+            raise RuntimeError(
+                "Cannot reconnect: client is externally managed. "
+                "Please handle reconnection externally."
+            )
+
+        try:
+            print("Attempting to reconnect to CARLA...")
+            self.client = self._connect_with_retry()
+            self.world = self.client.get_world()
+
+            # 同期モードを再設定
+            if self.synchronous_mode:
+                settings = self.world.get_settings()
+                settings.synchronous_mode = True
+                settings.fixed_delta_seconds = self.fixed_delta_seconds
+                self.world.apply_settings(settings)
+
+            # Traffic Manager Wrapperを再初期化
+            self.tm_wrapper = TrafficManagerWrapper(
+                client=self.client,
+                port=self._tm_port,
+                stamp_logger=self.stamp_logger,
+                command_tracker=self.command_tracker,
+            )
+
+            print("✓ Reconnection successful")
+            return True
+
+        except RuntimeError as e:
+            print(f"✗ Reconnection failed: {e}")
+            return False
+
+    def is_alive(self) -> bool:
+        """
+        CARLAサーバーが生きているか確認（エイリアス）
+
+        Returns:
+            サーバーが生きていればTrue
+        """
+        return self.check_connection()
 
     # ========================================
     # 車両登録・管理
@@ -403,8 +558,12 @@ class AgentController:
         return stamp_log_path, command_log_path
 
     def cleanup(self) -> None:
-        """クリーンアップ（車両のautopilot解除）"""
+        """クリーンアップ（車両のautopilot解除、設定の復元）"""
         self.tm_wrapper.cleanup()
+
+        # 同期モード設定を元に戻す
+        if self.synchronous_mode:
+            self.world.apply_settings(self._original_settings)
 
     # ========================================
     # コンテキストマネージャ

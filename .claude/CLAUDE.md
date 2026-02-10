@@ -837,9 +837,117 @@ uv run python scripts/analyze_scenarios.py <logical_uuid>
    - NPCロジックを統一し、実行パスを記録
    - 将来的にカバレッジ計測の基盤を提供
 
-### 基本的な使い方
+### 基本的な使い方（推奨: AgentController）
 
-#### 1. 初期化
+AgentControllerクラスを使うと、CARLAクライアント接続、同期モード設定、ロギング、クリーンアップがすべて自動化されます。
+
+```python
+from agent_controller import AgentController
+from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
+
+# AgentControllerが自動的に:
+# - CARLAに接続（リトライ機能付き）
+# - 同期モードを設定
+# - ログを初期化
+with AgentController(
+    scenario_uuid="my_scenario",
+    carla_host="localhost",
+    carla_port=2000,
+) as controller:
+    world = controller.world
+
+    # 接続確認
+    if controller.is_alive():
+        print("✓ CARLA server is alive")
+
+    # 車両をスポーン
+    blueprint = world.get_blueprint_library().find('vehicle.tesla.model3')
+    od_map = OpenDriveMap(world)
+    spawn_helper = SpawnHelper(od_map)
+
+    lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+    transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
+    vehicle = world.spawn_actor(blueprint, transform)
+
+    # 車両を登録
+    vehicle_id = controller.register_vehicle(
+        vehicle=vehicle,
+        auto_lane_change=False,
+        distance_to_leading=5.0,
+        speed_percentage=80.0,
+    )
+
+    # 高レベルAPIで振る舞いを実行
+    frame = 0
+
+    # レーンチェンジ
+    result = controller.lane_change(
+        vehicle_id=vehicle_id,
+        frame=frame,
+        direction="left",
+        duration_frames=100,
+    )
+    print(f"{result.message}")
+
+    # カットイン
+    result = controller.cut_in(
+        vehicle_id=vehicle_id,
+        frame=frame + 100,
+        target_vehicle_id=other_vehicle_id,
+        gap_distance=3.0,
+        speed_boost=120.0,
+    )
+
+    # 追従
+    result = controller.follow(
+        vehicle_id=vehicle_id,
+        frame=frame + 200,
+        target_vehicle_id=lead_vehicle_id,
+        distance=5.0,
+        duration_frames=200,
+    )
+
+    # 停止
+    result = controller.stop(
+        vehicle_id=vehicle_id,
+        frame=frame + 400,
+        duration_frames=50,
+    )
+
+    # 車両を破棄
+    vehicle.destroy()
+
+# コンテキストマネージャを抜けると自動的に:
+# - ログがファイナライズ・保存される
+# - サマリーが出力される
+# - 同期モードが元に戻される
+# - クリーンアップが実行される
+```
+
+### 接続管理機能（🆕）
+
+AgentControllerは、CARLAサーバーへの接続を自動的に管理します。
+
+```python
+with AgentController(
+    scenario_uuid="my_scenario",
+    max_retries=3,       # 接続失敗時の最大リトライ回数
+    retry_delay=2.0,     # リトライ間の待機時間（秒）
+) as controller:
+    # 接続確認
+    if controller.is_alive():
+        print("✓ Server is alive")
+
+    # 接続が切れた場合の再接続
+    if not controller.check_connection():
+        print("Connection lost. Reconnecting...")
+        if controller.reconnect():
+            print("✓ Reconnected successfully")
+```
+
+### 低レベルAPI（上級者向け）
+
+より細かい制御が必要な場合は、低レベルAPIを直接使用できます。
 
 ```python
 import carla
@@ -847,16 +955,17 @@ from agent_controller import (
     TrafficManagerWrapper,
     STAMPLogger,
     CommandTracker,
+    LaneChangeBehavior,
 )
 
-# CARLAクライアント接続
+# 手動でCARLA接続
 client = carla.Client('localhost', 2000)
+client.set_timeout(10.0)
 world = client.get_world()
 
 # ロガー初期化
-scenario_uuid = "your-scenario-uuid"
-stamp_logger = STAMPLogger(scenario_uuid=scenario_uuid)
-command_tracker = CommandTracker(scenario_uuid=scenario_uuid)
+stamp_logger = STAMPLogger(scenario_uuid="my_scenario")
+command_tracker = CommandTracker(scenario_uuid="my_scenario")
 
 # Traffic Manager Wrapper初期化
 tm_wrapper = TrafficManagerWrapper(
@@ -865,87 +974,13 @@ tm_wrapper = TrafficManagerWrapper(
     stamp_logger=stamp_logger,
     command_tracker=command_tracker,
 )
-```
 
-#### 2. 車両の登録
+# 車両登録と振る舞い実行
+# ...
 
-```python
-# 車両をスポーン（opendrive_utilsを使用）
-from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
-
-od_map = OpenDriveMap(world)
-spawn_helper = SpawnHelper(od_map)
-
-lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
-transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
-
-blueprint = world.get_blueprint_library().find('vehicle.tesla.model3')
-vehicle = world.spawn_actor(blueprint, transform)
-
-# Traffic Manager Wrapperに登録
-vehicle_id = tm_wrapper.register_vehicle(
-    vehicle=vehicle,
-    auto_lane_change=False,
-    distance_to_leading=5.0,
-    speed_percentage=80.0,
-    ignore_lights=False,
-)
-```
-
-#### 3. 高レベル振る舞いの実行
-
-```python
-from agent_controller import (
-    LaneChangeBehavior,
-    CutInBehavior,
-    FollowBehavior,
-)
-
-# レーンチェンジ
-lane_change = LaneChangeBehavior(tm_wrapper)
-result = lane_change.execute(
-    vehicle_id=vehicle_id,
-    frame=100,
-    direction="left",
-    duration_frames=100,
-)
-
-# カットイン
-cut_in = CutInBehavior(tm_wrapper)
-result = cut_in.execute(
-    vehicle_id=vehicle_id,
-    frame=200,
-    target_vehicle_id=other_vehicle_id,
-    gap_distance=3.0,
-    speed_boost=120.0,
-)
-
-# 追従走行
-follow = FollowBehavior(tm_wrapper)
-result = follow.execute(
-    vehicle_id=vehicle_id,
-    frame=300,
-    target_vehicle_id=lead_vehicle_id,
-    distance=5.0,
-    duration_frames=200,
-)
-```
-
-#### 4. ログのファイナライズ
-
-```python
-# シナリオ終了時
-stamp_log_path = stamp_logger.finalize()
-command_log_path = command_tracker.finalize()
-
-print(f"STAMP log saved: {stamp_log_path}")
-print(f"Command log saved: {command_log_path}")
-
-# サマリー出力
-stamp_logger.print_summary()
-command_tracker.print_summary()
-
-# クリーンアップ
+# 手動でクリーンアップ
+stamp_logger.finalize()
+command_tracker.finalize()
 tm_wrapper.cleanup()
 ```
 
@@ -1041,7 +1076,8 @@ agent_controllerに必要な機能が不足している場合：
 ### 参考資料
 
 - **詳細ドキュメント**: `agent_controller/README.md`
-- **使用例**: `examples/agent_controller_example.py`
+- **使用例（推奨）**: `examples/agent_controller_simple.py` - AgentControllerを使った最もシンプルな例
+- **使用例（詳細）**: `examples/agent_controller_example.py` - すべての機能を使った例
 - **APIリファレンス**: 各モジュールのdocstring参照
 
 ---

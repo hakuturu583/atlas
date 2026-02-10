@@ -2,12 +2,11 @@
 agent_controller 簡易使用例
 
 AgentControllerクラスを使った最もシンプルな使い方を示します。
-コンテキストマネージャを使用することで、ログの自動保存とクリーンアップが行われます。
+CARLAへの接続、同期モード設定、ログ保存、クリーンアップがすべて自動化されています。
 """
 
 import sys
 from pathlib import Path
-import carla
 
 # agent_controllerをインポート
 sys.path.append(str(Path(__file__).parent.parent))
@@ -20,20 +19,23 @@ def main():
     """メイン関数"""
     print("=== agent_controller Simple Example ===\n")
 
-    # CARLAクライアント接続
-    print("Connecting to CARLA...")
-    client = carla.Client("localhost", 2000)
-    client.set_timeout(10.0)
-    world = client.get_world()
-
-    # 同期モード設定
-    settings = world.get_settings()
-    settings.synchronous_mode = True
-    settings.fixed_delta_seconds = 0.05  # 20 FPS
-    world.apply_settings(settings)
-
-    # コンテキストマネージャを使用（自動的にログ保存・クリーンアップ）
-    with AgentController(client, scenario_uuid="simple_example") as controller:
+    # AgentControllerが自動的に:
+    # - CARLAに接続
+    # - 同期モードを設定
+    # - ログを初期化
+    # コンテキストマネージャを抜けると自動的に:
+    # - ログを保存
+    # - 同期モードを元に戻す
+    # - クリーンアップを実行
+    with AgentController(
+        scenario_uuid="simple_example",
+        carla_host="localhost",
+        carla_port=2000,
+        synchronous_mode=True,
+        fixed_delta_seconds=0.05,  # 20 FPS
+    ) as controller:
+        world = controller.world
+        print(f"Connected to CARLA: {world.get_map().name}\n")
         try:
             # 車両をスポーン
             print("\nSpawning vehicles...")
@@ -146,15 +148,10 @@ def main():
             ego_vehicle.destroy()
             npc_vehicle.destroy()
 
-        finally:
-            # 非同期モードに戻す
-            settings = world.get_settings()
-            settings.synchronous_mode = False
-            world.apply_settings(settings)
-
     # コンテキストマネージャを抜けると自動的に:
     # - ログがファイナライズ・保存される
     # - サマリーが出力される
+    # - 同期モードが元に戻される
     # - クリーンアップが実行される
 
     print("\n=== Example Completed ===")

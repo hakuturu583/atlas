@@ -5,18 +5,19 @@ agent_controller - CARLA Traffic Manager Wrapper Package
 テストケースでよくあるシナリオを簡単に記述できるようにします。
 
 主要機能:
-- レーンチェンジ
-- カットイン
-- タイミングを合わせた特定地点への突入
+- CARLAクライアント接続の自動管理（リトライ、生存確認、再接続）
+- レーンチェンジ、カットイン、タイミング突入などの高レベル振る舞い
 - STAMP状態遷移ロギング
 - ユーザー指示の追跡と記録
+- コンテキストマネージャによる自動クリーンアップ
 
 推奨される使い方:
     >>> from agent_controller import AgentController
-    >>> controller = AgentController(client, scenario_uuid="my-scenario")
-    >>> vehicle_id = controller.register_vehicle(vehicle)
-    >>> controller.lane_change(vehicle_id, frame=100, direction="left")
-    >>> controller.finalize()
+    >>> with AgentController(scenario_uuid="my-scenario") as controller:
+    ...     world = controller.world
+    ...     vehicle_id = controller.register_vehicle(vehicle)
+    ...     controller.lane_change(vehicle_id, frame=100, direction="left")
+    # 自動的にログ保存、クリーンアップが実行される
 """
 
 # メインAPI（推奨）
