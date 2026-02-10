@@ -67,28 +67,89 @@ PEGASUS分析で得られた情報は、以下のように活用されます：
    - ビルド不要、直接実行可能
    - `uv run python scenarios/{logical_uuid}.py --params data/scenarios/params_{parameter_uuid}.json`で実行
 
-6. **🚨 CRITICAL: Traffic Managerで車両制御**
-   - **すべての車両は必ずCARLA Traffic Managerで制御すること**
-   - 単純な`vehicle.set_autopilot(True)`ではなく、明示的にTraffic Managerを取得・設定する
-   - Traffic Managerの同期モードを有効化（`traffic_manager.set_synchronous_mode(True)`）
-   - 信号機認識を100%守る設定（`ignore_lights_percentage(vehicle, 0)`）
+6. **🚨 CRITICAL: AgentControllerクラスで車両制御**
+   - **すべての車両制御は必ず`AgentController`クラスを使用すること**
+   - CARLA Traffic Managerを直接使用することを禁止
+   - AgentControllerが自動的にSTAMPログとコマンド追跡を記録
+   - コンテキストマネージャを使用することでログの自動保存・クリーンアップが可能
 
-   **実装例**:
+   **実装例（推奨）**:
    ```python
-   # Traffic Managerを取得（ポート: CARLA_PORT + 6000）
-   traffic_manager = client.get_trafficmanager(carla_config['port'] + 6000)
-   traffic_manager.set_synchronous_mode(True)
+   from agent_controller import AgentController
 
-   # Traffic Managerで車両を制御
-   vehicle.set_autopilot(True, traffic_manager.get_port())
+   # AgentControllerを初期化（コンテキストマネージャ使用）
+   with AgentController(client, scenario_uuid=logical_uuid) as controller:
+       # 車両を登録
+       vehicle_id = controller.register_vehicle(
+           vehicle=vehicle,
+           auto_lane_change=False,
+           distance_to_leading=5.0,
+           speed_percentage=80.0,
+           ignore_lights=False,  # 信号を守る
+       )
 
-   # Traffic Manager設定
-   traffic_manager.ignore_lights_percentage(vehicle, 0)  # 信号を100%守る
-   traffic_manager.distance_to_leading_vehicle(vehicle, 2.0)  # 前方車両との距離
-   traffic_manager.vehicle_percentage_speed_difference(vehicle, -20)  # 制限速度の20%減
+       # 高レベル振る舞いを実行
+       result = controller.lane_change(
+           vehicle_id=vehicle_id,
+           frame=100,
+           direction="left",
+           duration_frames=100,
+       )
+
+       result = controller.cut_in(
+           vehicle_id=vehicle_id,
+           frame=200,
+           target_vehicle_id=other_vehicle_id,
+           gap_distance=3.0,
+           speed_boost=120.0,
+       )
+
+       result = controller.follow(
+           vehicle_id=vehicle_id,
+           frame=300,
+           target_vehicle_id=lead_vehicle_id,
+           distance=5.0,
+           duration_frames=200,
+       )
+
+       # コンテキストマネージャを抜けると自動的に:
+       # - ログがファイナライズ・保存される
+       # - サマリーが出力される
+       # - クリーンアップが実行される
    ```
 
-   **理由**: Traffic Managerを使うことで、信号機認識、レーン追従、他車両との協調動作が確実に機能する
+   **手動でログ管理する場合**:
+   ```python
+   from agent_controller import AgentController
+
+   controller = AgentController(client, scenario_uuid=logical_uuid)
+
+   # 車両を登録
+   vehicle_id = controller.register_vehicle(vehicle, ...)
+
+   # 振る舞いを実行
+   controller.lane_change(vehicle_id, frame=100, direction="left")
+
+   # ログを手動でファイナライズ
+   stamp_log, command_log = controller.finalize()
+   print(f"Logs saved: {stamp_log}, {command_log}")
+
+   # クリーンアップ
+   controller.cleanup()
+   ```
+
+   **理由**:
+   - NPC振る舞いのロジックを統一し、将来的なカバレッジ計測の基盤を提供
+   - STAMP状態遷移ログとユーザー指示追跡を自動記録
+   - 高レベルAPIで複雑な振る舞いを簡潔に記述可能
+   - 単一のクラスで全機能にアクセス可能（シンプルなAPI）
+   - **ログの記録漏れを防止**（AgentControllerが自動的にログを記録）
+
+   **🔧 機能が不足している場合**:
+   - `agent_controller`パッケージに必要な機能を追加
+   - 新しいBehaviorクラスを実装（`agent_controller/behaviors.py`）
+   - ブランチを切ってPRを作成（例: `feature/agent-controller-emergency-stop`）
+   - PRがマージされてから、シナリオスクリプトで新機能を使用
 
 ## 🚨 CARLA環境の制約
 
@@ -495,10 +556,11 @@ manager.create_execution_trace(
    - コマンドライン引数で`logical_uuid`と`param_uuid`を受け取る
    - 要件:
      - CARLA Python APIを使用
-     - **🚨 CRITICAL: `opendrive_utils`ライブラリを必ず使用**（詳細は下記）
+     - **🚨 CRITICAL: `agent_controller`パッケージを必ず使用**（車両制御に必須）
+     - **🚨 CRITICAL: `opendrive_utils`ライブラリを必ず使用**（スポーン位置計算に必須）
      - 同期モード設定（オプション）
      - スペクターカメラ配置と動画記録（imageio使用、**必須**）
-     - try-finally でクリーンアップ
+     - try-finally でクリーンアップ（ロガーのfinalize()を含む）
 
 3. **Python実装のコマンドライン引数**
    ```python
@@ -528,6 +590,385 @@ manager.create_execution_trace(
    ```bash
    uv run python scenarios/{logical_uuid}.py --logical-uuid {logical_uuid} --param-uuid {param_uuid}
    ```
+
+---
+
+## 🚨 CRITICAL: AgentControllerクラスの使用
+
+### 🎯 必須要件（絶対に守ること）
+
+**すべての車両制御は`AgentController`クラスを使用すること**
+
+これは**必須要件**です。シナリオ実装時には、以下を厳守してください：
+
+1. ✅ **必ず`AgentController`クラスを使用**して車両を制御
+2. ❌ **CARLA Traffic Managerを直接使用することを禁止**
+3. ✅ **コンテキストマネージャを使用**してログの自動保存・クリーンアップを行う
+4. ✅ **AgentControllerの高レベルメソッドを活用**（`lane_change()`, `cut_in()`など）
+5. ⚙️ **機能が不足している場合は`agent_controller`に機能追加してから使用**
+
+### 基本的な使い方
+
+#### 1. 初期化（推奨：コンテキストマネージャ使用）
+
+```python
+import carla
+from agent_controller import AgentController
+
+# CARLAクライアント接続
+client = carla.Client('localhost', 2000)
+world = client.get_world()
+
+# AgentControllerを初期化（コンテキストマネージャ使用）
+with AgentController(client, scenario_uuid="your-logical-uuid") as controller:
+    # ここでシナリオを実行
+    # コンテキストマネージャを抜けると自動的に:
+    # - ログがファイナライズ・保存される
+    # - サマリーが出力される
+    # - クリーンアップが実行される
+    pass
+```
+
+#### 1-b. 初期化（手動管理）
+
+コンテキストマネージャを使わない場合は、手動でfinalize()とcleanup()を呼び出す必要があります：
+
+```python
+import carla
+from agent_controller import AgentController
+
+# CARLAクライアント接続
+client = carla.Client('localhost', 2000)
+world = client.get_world()
+
+# AgentControllerを初期化
+controller = AgentController(
+    client=client,
+    scenario_uuid="your-logical-uuid",
+    tm_port=8000,
+    enable_logging=True,
+)
+
+try:
+    # シナリオ実行
+    pass
+finally:
+    # ログを手動でファイナライズ
+    stamp_log, command_log = controller.finalize()
+    print(f"Logs saved: {stamp_log}, {command_log}")
+
+    # クリーンアップ
+    controller.cleanup()
+```
+
+#### 2. 車両の登録
+
+```python
+# 車両をスポーン（opendrive_utilsを使用）
+from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
+
+od_map = OpenDriveMap(world)
+spawn_helper = SpawnHelper(od_map)
+
+lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
+
+blueprint = world.get_blueprint_library().find('vehicle.tesla.model3')
+vehicle = world.spawn_actor(blueprint, transform)
+
+# AgentControllerに登録
+vehicle_id = controller.register_vehicle(
+    vehicle=vehicle,
+    auto_lane_change=False,  # 手動でレーンチェンジを制御
+    distance_to_leading=5.0,  # 前方車両との距離
+    speed_percentage=80.0,    # 制限速度の80%
+    ignore_lights=False,      # 信号を守る
+)
+```
+
+#### 3. 高レベル振る舞いの実行
+
+```python
+frame = 0
+
+# レーンチェンジ
+result = controller.lane_change(
+    vehicle_id=vehicle_id,
+    frame=frame,
+    direction="left",
+    duration_frames=100,
+)
+print(f"Lane change: {result.message}")
+
+# カットイン
+result = controller.cut_in(
+    vehicle_id=vehicle_id,
+    frame=frame,
+    target_vehicle_id=other_vehicle_id,
+    gap_distance=3.0,
+    speed_boost=120.0,
+)
+print(f"Cut in: {result.message}")
+
+# タイミング突入
+target_location = carla.Location(x=100.0, y=50.0, z=0.5)
+result = controller.timed_approach(
+    vehicle_id=vehicle_id,
+    frame=frame,
+    target_location=target_location,
+    target_time=5.0,  # 5秒で到達
+    ignore_traffic=True,
+)
+print(f"Timed approach: {result.message}")
+
+# 追従走行
+result = controller.follow(
+    vehicle_id=vehicle_id,
+    frame=frame,
+    target_vehicle_id=lead_vehicle_id,
+    distance=5.0,
+    duration_frames=200,
+)
+print(f"Follow: {result.message}")
+
+# 停止
+result = controller.stop(
+    vehicle_id=vehicle_id,
+    frame=frame,
+    duration_frames=50,
+)
+print(f"Stop: {result.message}")
+```
+
+#### 4. 低レベルTraffic Manager設定
+
+高レベルBehaviorで対応できない場合、低レベルAPIも使用可能：
+
+```python
+# 自動レーンチェンジの設定
+controller.set_auto_lane_change(vehicle_id, enable=True, frame=frame)
+
+# 強制レーンチェンジ
+controller.force_lane_change(vehicle_id, direction=True, frame=frame)  # True=左
+
+# 前方車両との距離設定
+controller.set_distance_to_leading(vehicle_id, distance=3.0, frame=frame)
+
+# 速度設定
+controller.set_speed_percentage(vehicle_id, percentage=120.0, frame=frame)
+
+# 信号無視設定
+controller.ignore_lights(vehicle_id, ignore=True, frame=frame)
+```
+
+#### 5. ログのファイナライズ
+
+**コンテキストマネージャを使用する場合（推奨）**:
+```python
+with AgentController(client, scenario_uuid=logical_uuid) as controller:
+    # シナリオ実行
+    # ...
+    pass
+# コンテキストマネージャを抜けると自動的に:
+# - ログがファイナライズ・保存される
+# - サマリーが出力される
+# - クリーンアップが実行される
+```
+
+**手動でログ管理する場合**:
+```python
+# シナリオ終了時にログを保存
+stamp_log_path, command_log_path = controller.finalize()
+
+print(f"STAMP log saved: {stamp_log_path}")
+print(f"Command log saved: {command_log_path}")
+
+# クリーンアップ
+controller.cleanup()
+```
+
+### 🔧 機能が不足している場合の対応
+
+`agent_controller`パッケージに必要な機能がない場合：
+
+1. **機能追加を検討する**
+   - `agent_controller/behaviors.py`に新しいBehaviorクラスを追加
+   - 例: 緊急停止、車線維持、障害物回避など
+
+2. **🚨 必須: Git Workflowに従う**
+
+   **重要**: agent_controllerに機能追加する場合は、必ずブランチを切ってPRを出すこと
+
+   ```bash
+   # 1. 機能追加用のブランチを作成
+   git checkout -b feature/agent-controller-emergency-stop
+
+   # 2. 機能を実装
+   # agent_controller/behaviors.py に EmergencyStopBehavior を追加
+
+   # 3. 変更をコミット
+   git add agent_controller/
+   git commit -m "Add emergency stop behavior to agent_controller
+
+   - Implement EmergencyStopBehavior class
+   - Support immediate braking with configurable deceleration
+   - Add STAMP logging for emergency actions
+
+   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+
+   # 4. ブランチをプッシュ
+   git push origin feature/agent-controller-emergency-stop
+
+   # 5. PRを作成
+   gh pr create --title "Add emergency stop behavior" \
+                --body "## Summary
+   緊急停止動作を追加
+
+   ## Changes
+   - \`EmergencyStopBehavior\`クラスを実装
+   - 即座のブレーキと減速度の設定をサポート
+
+   ## Test Plan
+   - [ ] 緊急停止動作の確認
+   - [ ] STAMPログの記録を検証
+
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+   ```
+
+   **レビュー＆マージ後に使用**: PRがマージされてから、シナリオスクリプトで新機能を使用してください。
+
+3. **機能追加の実装例**
+   ```python
+   # agent_controller/behaviors.py に追加
+   class EmergencyStopBehavior(Behavior):
+       """緊急停止動作"""
+
+       def execute(
+           self,
+           vehicle_id: int,
+           frame: int,
+           deceleration: float = 10.0,  # m/s²
+           **kwargs,
+       ) -> BehaviorResult:
+           """
+           緊急停止を実行
+
+           Args:
+               vehicle_id: 車両ID
+               frame: 現在のフレーム番号
+               deceleration: 減速度（m/s²）
+
+           Returns:
+               実行結果
+           """
+           # 実装...
+   ```
+
+4. **追加後に使用**
+   ```python
+   # シナリオスクリプトで新機能を使用
+   from agent_controller import EmergencyStopBehavior
+
+   emergency_stop = EmergencyStopBehavior(tm_wrapper)
+   result = emergency_stop.execute(
+       vehicle_id=vehicle_id,
+       frame=frame,
+       deceleration=15.0,
+   )
+   ```
+
+### ❌ 禁止事項
+
+**以下の方法は絶対に使用しないこと**
+
+#### 1. Traffic Managerの直接使用（禁止）
+
+```python
+# ❌ BAD: Traffic Managerを直接使用（完全に禁止）
+traffic_manager = client.get_trafficmanager(8000)
+traffic_manager.set_synchronous_mode(True)
+vehicle.set_autopilot(True, traffic_manager.get_port())
+traffic_manager.ignore_lights_percentage(vehicle, 0)
+```
+
+理由：
+- NPC制御ロジックが分散し、将来的なカバレッジ計測が困難
+- STAMP状態遷移ログが記録されない
+- ユーザー指示の追跡ができない
+- コードの保守性が低下
+- **ログの記録漏れが発生する**
+
+#### 2. 単純なautopilot設定（禁止）
+
+```python
+# ❌ BAD: 単純なautopilot設定（禁止）
+vehicle.set_autopilot(True)
+```
+
+理由：
+- Traffic Managerの詳細設定ができない
+- ロギングが一切記録されない
+- **必要なログが回収されない**
+
+#### 3. 低レベルBehaviorの直接使用（非推奨）
+
+```python
+# ❌ 非推奨: LaneChangeBehaviorを直接使用
+from agent_controller import LaneChangeBehavior, TrafficManagerWrapper
+
+tm_wrapper = TrafficManagerWrapper(client, ...)
+lane_change = LaneChangeBehavior(tm_wrapper)
+result = lane_change.execute(...)
+```
+
+理由：
+- AgentControllerクラスを使う方がシンプル
+- コードの可読性が低下
+- 初期化のコードが冗長になる
+
+### ✅ 必須: AgentControllerクラスの使用
+
+**すべての車両制御は`AgentController`クラスで行うこと**
+
+```python
+# ✅ GOOD: AgentControllerを使用
+from agent_controller import AgentController
+
+# AgentControllerを初期化（コンテキストマネージャ使用）
+with AgentController(client, scenario_uuid=logical_uuid) as controller:
+    # 車両を登録
+    vehicle_id = controller.register_vehicle(
+        vehicle=vehicle,
+        auto_lane_change=False,
+        distance_to_leading=5.0,
+        speed_percentage=80.0,
+    )
+
+    # 高レベル振る舞いを実行
+    result = controller.lane_change(
+        vehicle_id=vehicle_id,
+        frame=100,
+        direction="left",
+        duration_frames=100,
+    )
+
+    # コンテキストマネージャを抜けると:
+    # - STAMPログが自動保存される
+    # - コマンド追跡ログが自動保存される
+    # - サマリーが自動出力される
+    # - クリーンアップが自動実行される
+```
+
+**重要**: コンテキストマネージャを使用することで、**ログの記録漏れを完全に防止**できます。
+
+### まとめ
+
+- ✅ **必ず`agent_controller`を使用して車両を制御**
+- ❌ **CARLA Traffic Managerの直接使用は禁止**
+- ✅ **STAMPロガーとコマンドトラッカーでログ記録**
+- ✅ **高レベルBehavior APIで複雑な振る舞いを簡潔に記述**
+- ✅ **機能不足の場合はagent_controllerに機能追加してからPR**
+- ✅ **将来的なカバレッジ計測の基盤が整う**
 
 ---
 

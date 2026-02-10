@@ -200,6 +200,14 @@ atlas/                              ← プロジェクトルート（working di
 │   │       └── ... (10個のスキル)
 │   └── settings.local.json         ← 権限設定（Bash許可リスト）
 │
+├── agent_controller/               ← CARLA Traffic Manager Wrapper（🆕）
+│   ├── __init__.py                 ← パッケージエントリポイント
+│   ├── traffic_manager_wrapper.py  ← Traffic Managerラッパー
+│   ├── behaviors.py                ← 高レベル振る舞い（レーンチェンジ、カットインなど）
+│   ├── stamp_logger.py             ← STAMP状態遷移ロガー
+│   ├── command_tracker.py          ← ユーザー指示追跡
+│   └── README.md                   ← パッケージドキュメント
+│
 ├── scripts/                        ← ユーティリティスクリプト
 │   ├── launch_sandbox.py           ← Sandbox起動・管理CLI
 │   ├── launch-sandbox.sh           ← シェルラッパースクリプト
@@ -208,7 +216,10 @@ atlas/                              ← プロジェクトルート（working di
 │
 ├── data/                           ← データストレージ
 │   ├── scenarios/                  ← シナリオファイル（JSON/YAML）
-│   └── rerun/                      ← RRDファイル（rerun.io）
+│   ├── rerun/                      ← RRDファイル（rerun.io）
+│   └── logs/                       ← ログファイル（🆕）
+│       ├── stamp/                  ← STAMP状態遷移ログ
+│       └── commands/               ← コマンド追跡ログ
 │
 ├── pyproject.toml                  ← プロジェクト設定（uv）
 ├── Makefile                        ← ビルド・実行タスク
@@ -792,6 +803,246 @@ uv run python scripts/analyze_scenarios.py
 # 特定のシナリオの系譜
 uv run python scripts/analyze_scenarios.py <logical_uuid>
 ```
+
+---
+
+## agent_controllerパッケージ
+
+### 概要
+
+**agent_controller**は、CARLA Traffic Managerをラップした高レベルAPIパッケージです。テストケースでよくあるシナリオ（レーンチェンジ、カットイン、タイミング突入など）を簡単に記述でき、STAMP状態遷移ロガーとユーザー指示追跡機能を統合しています。
+
+### 主要機能
+
+1. **高レベルAPI**
+   - レーンチェンジ: 左右へのレーンチェンジ
+   - カットイン: 前方車両への割り込み
+   - タイミング突入: 特定地点への時間指定到達
+   - 追従走行: 前方車両を一定距離で追従
+   - 停止: 車両の停止
+
+2. **STAMPロギング**
+   - STAMP理論に基づいた状態遷移の記録
+   - 制御アクション（accelerate, brake, lane_changeなど）の記録
+   - 車両の位置・速度・状態の記録
+   - JSONファイルで保存（`data/logs/stamp/`）
+
+3. **ユーザー指示追跡**
+   - ユーザーからの指示（コマンド）を記録
+   - 指示の完遂状態を追跡（pending → in_progress → completed/failed）
+   - 実行メトリクス（実行時間、移動距離など）の記録
+   - JSONファイルで保存（`data/logs/commands/`）
+
+4. **将来のカバレッジ計測**
+   - NPCロジックを統一し、実行パスを記録
+   - 将来的にカバレッジ計測の基盤を提供
+
+### 基本的な使い方
+
+#### 1. 初期化
+
+```python
+import carla
+from agent_controller import (
+    TrafficManagerWrapper,
+    STAMPLogger,
+    CommandTracker,
+)
+
+# CARLAクライアント接続
+client = carla.Client('localhost', 2000)
+world = client.get_world()
+
+# ロガー初期化
+scenario_uuid = "your-scenario-uuid"
+stamp_logger = STAMPLogger(scenario_uuid=scenario_uuid)
+command_tracker = CommandTracker(scenario_uuid=scenario_uuid)
+
+# Traffic Manager Wrapper初期化
+tm_wrapper = TrafficManagerWrapper(
+    client=client,
+    port=8000,
+    stamp_logger=stamp_logger,
+    command_tracker=command_tracker,
+)
+```
+
+#### 2. 車両の登録
+
+```python
+# 車両をスポーン（opendrive_utilsを使用）
+from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
+
+od_map = OpenDriveMap(world)
+spawn_helper = SpawnHelper(od_map)
+
+lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
+
+blueprint = world.get_blueprint_library().find('vehicle.tesla.model3')
+vehicle = world.spawn_actor(blueprint, transform)
+
+# Traffic Manager Wrapperに登録
+vehicle_id = tm_wrapper.register_vehicle(
+    vehicle=vehicle,
+    auto_lane_change=False,
+    distance_to_leading=5.0,
+    speed_percentage=80.0,
+    ignore_lights=False,
+)
+```
+
+#### 3. 高レベル振る舞いの実行
+
+```python
+from agent_controller import (
+    LaneChangeBehavior,
+    CutInBehavior,
+    FollowBehavior,
+)
+
+# レーンチェンジ
+lane_change = LaneChangeBehavior(tm_wrapper)
+result = lane_change.execute(
+    vehicle_id=vehicle_id,
+    frame=100,
+    direction="left",
+    duration_frames=100,
+)
+
+# カットイン
+cut_in = CutInBehavior(tm_wrapper)
+result = cut_in.execute(
+    vehicle_id=vehicle_id,
+    frame=200,
+    target_vehicle_id=other_vehicle_id,
+    gap_distance=3.0,
+    speed_boost=120.0,
+)
+
+# 追従走行
+follow = FollowBehavior(tm_wrapper)
+result = follow.execute(
+    vehicle_id=vehicle_id,
+    frame=300,
+    target_vehicle_id=lead_vehicle_id,
+    distance=5.0,
+    duration_frames=200,
+)
+```
+
+#### 4. ログのファイナライズ
+
+```python
+# シナリオ終了時
+stamp_log_path = stamp_logger.finalize()
+command_log_path = command_tracker.finalize()
+
+print(f"STAMP log saved: {stamp_log_path}")
+print(f"Command log saved: {command_log_path}")
+
+# サマリー出力
+stamp_logger.print_summary()
+command_tracker.print_summary()
+
+# クリーンアップ
+tm_wrapper.cleanup()
+```
+
+### 利用可能なBehavior
+
+| Behavior | 説明 | 主要パラメータ |
+|----------|------|---------------|
+| `LaneChangeBehavior` | レーンチェンジ | `direction` ("left"/"right"), `duration_frames` |
+| `CutInBehavior` | カットイン | `target_vehicle_id`, `gap_distance`, `speed_boost` |
+| `TimedApproachBehavior` | タイミング突入 | `target_location`, `target_time`, `ignore_traffic` |
+| `FollowBehavior` | 追従走行 | `target_vehicle_id`, `distance`, `duration_frames` |
+| `StopBehavior` | 停止 | `duration_frames` |
+
+### 機能追加の方法
+
+agent_controllerに必要な機能が不足している場合：
+
+1. **新しいBehaviorクラスを追加**
+   - `agent_controller/behaviors.py`に実装
+   - `Behavior`基底クラスを継承
+   - `execute()`メソッドを実装
+
+2. **Gitワークフローに従う**
+   ```bash
+   # ブランチ作成
+   git checkout -b feature/agent-controller-new-behavior
+
+   # 実装
+   # ...
+
+   # コミット＆プッシュ
+   git add agent_controller/
+   git commit -m "Add new behavior to agent_controller"
+   git push origin feature/agent-controller-new-behavior
+
+   # PR作成
+   gh pr create --title "Add new behavior" --body "..."
+   ```
+
+3. **マージ後に使用**
+   - PRがマージされてから、シナリオスクリプトで新機能を使用
+
+### ログ出力
+
+#### STAMP状態遷移ログ
+
+```json
+{
+  "scenario_uuid": "uuid-123",
+  "start_time": "2025-01-01T12:00:00",
+  "state_transitions": [
+    {
+      "timestamp": 1234567890.0,
+      "frame": 100,
+      "vehicle_id": 42,
+      "from_state": "idle",
+      "to_state": "driving",
+      "control_action": "accelerate",
+      "location": {"x": 100.0, "y": 50.0, "z": 0.5},
+      "velocity": {"x": 5.0, "y": 0.0, "z": 0.0}
+    }
+  ],
+  "control_actions": [...]
+}
+```
+
+#### コマンド追跡ログ
+
+```json
+{
+  "scenario_uuid": "uuid-123",
+  "commands": [
+    {
+      "command_id": "cmd_0001",
+      "description": "Lane change to left",
+      "status": "completed",
+      "success": true,
+      "metrics": {
+        "duration_seconds": 4.0,
+        "duration_frames": 80,
+        "distance_traveled": 50.0
+      }
+    }
+  ],
+  "summary": {
+    "total_commands": 5,
+    "completed": 4,
+    "success_rate": 0.8
+  }
+}
+```
+
+### 参考資料
+
+- **詳細ドキュメント**: `agent_controller/README.md`
+- **使用例**: `examples/agent_controller_example.py`
+- **APIリファレンス**: 各モジュールのdocstring参照
 
 ---
 
