@@ -1004,25 +1004,10 @@ with AgentController(
     # シナリオ実行...
     controller.run_simulation(total_frames=600)
 
-    # メトリクス取得
-    metrics = controller.get_metrics()
-    if metrics:
-        # イベント取得
-        sudden_braking = metrics.get_events_by_type("sudden_braking")
-        low_ttc = metrics.get_events_by_type("low_ttc")
-
-        print(f"Sudden Braking Events: {len(sudden_braking)}")
-        print(f"Low TTC Events: {len(low_ttc)}")
-
-        # 意味論的カバレッジ取得
-        coverage = controller.get_semantic_coverage()
-        print(f"Coverage: {coverage}")
-
-        # カバレッジ率を計算
-        coverage_rate = sum(coverage.values()) / len(coverage) * 100
-        print(f"Coverage Rate: {coverage_rate:.1f}%")
-
-# メトリクスログはdata/logs/metrics/に保存される
+# コンテキストマネージャを抜けると自動的に:
+# - メトリクスログが data/logs/metrics/ に保存される
+# - STAMPログが data/logs/stamp/ に保存される
+# - コマンドログが data/logs/commands/ に保存される
 ```
 
 #### 計算されるメトリクス

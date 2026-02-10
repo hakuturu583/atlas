@@ -43,7 +43,6 @@ from .vehicle_config import (
     RECKLESS_DRIVER,
     NORMAL_DRIVER,
 )
-from .metrics import SafetyMetrics, MetricsConfig, MetricsEvent
 
 # 低レベルAPI（上級ユーザー向け）
 from .traffic_manager_wrapper import TrafficManagerWrapper
@@ -67,10 +66,6 @@ __all__ = [
     "CAUTIOUS_DRIVER",
     "RECKLESS_DRIVER",
     "NORMAL_DRIVER",
-    # メトリクス
-    "SafetyMetrics",
-    "MetricsConfig",
-    "MetricsEvent",
     # 低レベルAPI
     "TrafficManagerWrapper",
     "LaneChangeBehavior",

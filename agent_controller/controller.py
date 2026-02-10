@@ -1069,30 +1069,6 @@ class AgentController:
         return StateType.IDLE
 
     # ========================================
-    # メトリクス
-    # ========================================
-
-    def get_metrics(self) -> Optional[SafetyMetrics]:
-        """
-        メトリクスオブジェクトを取得
-
-        Returns:
-            SafetyMetricsオブジェクト（メトリクスが無効な場合はNone）
-        """
-        return self.metrics
-
-    def get_semantic_coverage(self) -> Optional[dict]:
-        """
-        意味論的カバレッジを取得
-
-        Returns:
-            カバレッジ辞書（メトリクスが無効な場合はNone）
-        """
-        if self.metrics:
-            return self.metrics.get_semantic_coverage()
-        return None
-
-    # ========================================
     # クリーンアップ
     # ========================================
 

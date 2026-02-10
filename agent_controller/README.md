@@ -249,10 +249,11 @@ aggressive_vehicle, _ = controller.spawn_vehicle_from_lane(
 
 ### MetricsConfig（メトリクス設定）🆕
 
-安全性メトリクスの計算設定をまとめたデータクラス。自動運転システムの評価指標を自動計算します。
+安全性メトリクスの計算設定をまとめたデータクラス。自動運転システムの評価指標を自動計算し、ログファイルに保存します。
 
 ```python
-from agent_controller import AgentController, MetricsConfig
+from agent_controller import AgentController
+from agent_controller.metrics import MetricsConfig
 
 # カスタムメトリクス設定
 metrics_config = MetricsConfig(
@@ -274,16 +275,10 @@ with AgentController(
     # シナリオ実行...
     controller.run_simulation(total_frames=600)
 
-    # メトリクス取得
-    metrics = controller.get_metrics()
-    if metrics:
-        # イベント取得
-        sudden_braking = metrics.get_events_by_type("sudden_braking")
-        low_ttc = metrics.get_events_by_type("low_ttc")
-
-        # 意味論的カバレッジ取得
-        coverage = controller.get_semantic_coverage()
-        print(f"Coverage: {coverage}")
+# コンテキストマネージャを抜けると自動的に:
+# - メトリクスログが data/logs/metrics/ に保存される
+# - STAMPログが data/logs/stamp/ に保存される
+# - コマンドログが data/logs/commands/ に保存される
 ```
 
 #### 計算されるメトリクス

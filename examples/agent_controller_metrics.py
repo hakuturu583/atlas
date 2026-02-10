@@ -14,10 +14,10 @@ sys.path.append(str(Path(__file__).parent.parent))
 from agent_controller import (
     AgentController,
     VehicleConfig,
-    MetricsConfig,
     NORMAL_DRIVER,
     AGGRESSIVE_DRIVER,
 )
+from agent_controller.metrics import MetricsConfig
 from opendrive_utils import LaneCoord
 
 
@@ -109,50 +109,16 @@ def main():
             or controller.follow(ego_id, target_vehicle_id=npc_id, distance=3.0),
         )
 
-        # シミュレーション実行（メトリクスは自動的に計算される）
+        # シミュレーション実行（メトリクスは自動的に計算・保存される）
         controller.run_simulation(total_frames=700)
 
-        # メトリクスを取得
-        metrics = controller.get_metrics()
-        if metrics:
-            print("\n" + "=" * 60)
-            print("  Metrics Analysis")
-            print("=" * 60)
+    # コンテキストマネージャを抜けると自動的に:
+    # - メトリクスログが保存される（data/logs/metrics/）
+    # - STAMPログが保存される（data/logs/stamp/）
+    # - コマンドログが保存される（data/logs/commands/）
 
-            # イベントをタイプ別に表示
-            event_types = [
-                "sudden_braking",
-                "sudden_acceleration",
-                "high_jerk",
-                "low_ttc",
-                "min_distance_violation",
-            ]
-
-            for event_type in event_types:
-                events = metrics.get_events_by_type(event_type)
-                if events:
-                    print(f"\n【{event_type}】")
-                    for event in events[:5]:  # 最初の5件のみ表示
-                        print(
-                            f"  Frame {event.frame}: {event.description} at ({event.location[0]:.1f}, {event.location[1]:.1f})"
-                        )
-                    if len(events) > 5:
-                        print(f"  ... and {len(events) - 5} more events")
-
-            # 意味論的カバレッジを表示
-            coverage = controller.get_semantic_coverage()
-            if coverage:
-                print(f"\n【意味論的カバレッジ】")
-                for event_type, occurred in coverage.items():
-                    status = "✓" if occurred else "✗"
-                    print(f"  {status} {event_type}")
-
-                coverage_rate = sum(coverage.values()) / len(coverage) * 100
-                print(f"\n  カバレッジ率: {coverage_rate:.1f}%")
-
-    # メトリクスログはdata/logs/metrics/に保存される
     print("\n=== Example Completed ===")
-    print(f"Metrics log saved to: data/logs/metrics/{controller.scenario_uuid}_metrics.json")
+    print("Metrics log saved to: data/logs/metrics/metrics_example_metrics.json")
 
 
 if __name__ == "__main__":
