@@ -23,6 +23,7 @@ class MetricsEvent:
     value: float
     threshold: float
     description: str
+    transition: str  # "safe_to_unsafe" or "unsafe_to_safe"
     location: Optional[Tuple[float, float, float]] = None
 
 
@@ -132,8 +133,9 @@ class SafetyMetrics:
                 "sudden_braking", False
             )
 
-            # 状態遷移（false → true）のときだけ記録
+            # 状態遷移を記録（Safe => Unsafe または Unsafe => Safe）
             if is_sudden_braking and not prev_sudden_braking:
+                # Safe => Unsafe
                 self._events.append(
                     MetricsEvent(
                         frame=frame,
@@ -142,7 +144,23 @@ class SafetyMetrics:
                         vehicle_id=vehicle_id,
                         value=abs(acceleration),
                         threshold=self.config.sudden_braking_threshold,
-                        description=f"急ブレーキ検出: {abs(acceleration):.2f} m/s²",
+                        description=f"急ブレーキ開始: {abs(acceleration):.2f} m/s²",
+                        transition="safe_to_unsafe",
+                        location=(location.x, location.y, location.z),
+                    )
+                )
+            elif not is_sudden_braking and prev_sudden_braking:
+                # Unsafe => Safe
+                self._events.append(
+                    MetricsEvent(
+                        frame=frame,
+                        timestamp=timestamp,
+                        event_type="sudden_braking",
+                        vehicle_id=vehicle_id,
+                        value=abs(acceleration),
+                        threshold=self.config.sudden_braking_threshold,
+                        description=f"急ブレーキ終了: {abs(acceleration):.2f} m/s²",
+                        transition="unsafe_to_safe",
                         location=(location.x, location.y, location.z),
                     )
                 )
@@ -158,8 +176,9 @@ class SafetyMetrics:
                 "sudden_acceleration", False
             )
 
-            # 状態遷移（false → true）のときだけ記録
+            # 状態遷移を記録（Safe => Unsafe または Unsafe => Safe）
             if is_sudden_acceleration and not prev_sudden_acceleration:
+                # Safe => Unsafe
                 self._events.append(
                     MetricsEvent(
                         frame=frame,
@@ -168,7 +187,23 @@ class SafetyMetrics:
                         vehicle_id=vehicle_id,
                         value=acceleration,
                         threshold=self.config.sudden_acceleration_threshold,
-                        description=f"急加速検出: {acceleration:.2f} m/s²",
+                        description=f"急加速開始: {acceleration:.2f} m/s²",
+                        transition="safe_to_unsafe",
+                        location=(location.x, location.y, location.z),
+                    )
+                )
+            elif not is_sudden_acceleration and prev_sudden_acceleration:
+                # Unsafe => Safe
+                self._events.append(
+                    MetricsEvent(
+                        frame=frame,
+                        timestamp=timestamp,
+                        event_type="sudden_acceleration",
+                        vehicle_id=vehicle_id,
+                        value=acceleration,
+                        threshold=self.config.sudden_acceleration_threshold,
+                        description=f"急加速終了: {acceleration:.2f} m/s²",
+                        transition="unsafe_to_safe",
                         location=(location.x, location.y, location.z),
                     )
                 )
@@ -182,8 +217,9 @@ class SafetyMetrics:
                 is_high_jerk = abs(jerk) > self.config.jerk_threshold
                 prev_high_jerk = self._prev_states[vehicle_id].get("high_jerk", False)
 
-                # 状態遷移（false → true）のときだけ記録
+                # 状態遷移を記録（Safe => Unsafe または Unsafe => Safe）
                 if is_high_jerk and not prev_high_jerk:
+                    # Safe => Unsafe
                     self._events.append(
                         MetricsEvent(
                             frame=frame,
@@ -192,7 +228,23 @@ class SafetyMetrics:
                             vehicle_id=vehicle_id,
                             value=abs(jerk),
                             threshold=self.config.jerk_threshold,
-                            description=f"高ジャーク検出: {abs(jerk):.2f} m/s³",
+                            description=f"高ジャーク開始: {abs(jerk):.2f} m/s³",
+                            transition="safe_to_unsafe",
+                            location=(location.x, location.y, location.z),
+                        )
+                    )
+                elif not is_high_jerk and prev_high_jerk:
+                    # Unsafe => Safe
+                    self._events.append(
+                        MetricsEvent(
+                            frame=frame,
+                            timestamp=timestamp,
+                            event_type="high_jerk",
+                            vehicle_id=vehicle_id,
+                            value=abs(jerk),
+                            threshold=self.config.jerk_threshold,
+                            description=f"高ジャーク終了: {abs(jerk):.2f} m/s³",
+                            transition="unsafe_to_safe",
                             location=(location.x, location.y, location.z),
                         )
                     )
@@ -209,8 +261,9 @@ class SafetyMetrics:
             is_low_ttc = ttc < self.config.ttc_threshold
             prev_low_ttc = self._prev_states[vehicle_id].get("low_ttc", False)
 
-            # 状態遷移（false → true）のときだけ記録
+            # 状態遷移を記録（Safe => Unsafe または Unsafe => Safe）
             if is_low_ttc and not prev_low_ttc:
+                # Safe => Unsafe
                 self._events.append(
                     MetricsEvent(
                         frame=frame,
@@ -219,7 +272,23 @@ class SafetyMetrics:
                         vehicle_id=vehicle_id,
                         value=ttc,
                         threshold=self.config.ttc_threshold,
-                        description=f"TTC閾値違反: {ttc:.2f}秒",
+                        description=f"低TTC開始: {ttc:.2f}秒",
+                        transition="safe_to_unsafe",
+                        location=(location.x, location.y, location.z),
+                    )
+                )
+            elif not is_low_ttc and prev_low_ttc:
+                # Unsafe => Safe
+                self._events.append(
+                    MetricsEvent(
+                        frame=frame,
+                        timestamp=timestamp,
+                        event_type="low_ttc",
+                        vehicle_id=vehicle_id,
+                        value=ttc,
+                        threshold=self.config.ttc_threshold,
+                        description=f"低TTC終了: {ttc:.2f}秒",
+                        transition="unsafe_to_safe",
                         location=(location.x, location.y, location.z),
                     )
                 )
@@ -241,8 +310,9 @@ class SafetyMetrics:
                 "min_distance_violation", False
             )
 
-            # 状態遷移（false → true）のときだけ記録
+            # 状態遷移を記録（Safe => Unsafe または Unsafe => Safe）
             if is_min_distance_violation and not prev_min_distance_violation:
+                # Safe => Unsafe
                 self._events.append(
                     MetricsEvent(
                         frame=frame,
@@ -251,7 +321,23 @@ class SafetyMetrics:
                         vehicle_id=vehicle_id,
                         value=min_distance,
                         threshold=self.config.min_distance_threshold,
-                        description=f"最小車間距離違反: {min_distance:.2f}m",
+                        description=f"最小車間距離違反開始: {min_distance:.2f}m",
+                        transition="safe_to_unsafe",
+                        location=(location.x, location.y, location.z),
+                    )
+                )
+            elif not is_min_distance_violation and prev_min_distance_violation:
+                # Unsafe => Safe
+                self._events.append(
+                    MetricsEvent(
+                        frame=frame,
+                        timestamp=timestamp,
+                        event_type="min_distance_violation",
+                        vehicle_id=vehicle_id,
+                        value=min_distance,
+                        threshold=self.config.min_distance_threshold,
+                        description=f"最小車間距離違反終了: {min_distance:.2f}m",
+                        transition="unsafe_to_safe",
                         location=(location.x, location.y, location.z),
                     )
                 )
@@ -459,6 +545,7 @@ class SafetyMetrics:
                     "value": event.value,
                     "threshold": event.threshold,
                     "description": event.description,
+                    "transition": event.transition,
                     "location": event.location,
                 }
                 for event in self._events
