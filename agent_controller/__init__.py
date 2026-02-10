@@ -6,6 +6,7 @@ agent_controller - CARLA Traffic Manager Wrapper Package
 
 主要機能:
 - CARLAクライアント接続の自動管理（リトライ、生存確認、再接続）
+- 車両の自動生存管理（スポーン追跡、自動破棄）
 - トリガー関数ベースのシナリオ記述（world.tick()とフレーム管理が不要）
 - 豊富なトリガー条件（タイムステップ、位置、距離、速度など）
 - レーンチェンジ、カットイン、タイミング突入などの高レベル振る舞い
@@ -28,8 +29,7 @@ agent_controller - CARLA Traffic Manager Wrapper Package
     ...         lambda: controller.lane_change(ego_id, direction="left")
     ...     )
     ...     controller.run_simulation(total_frames=500)
-    ...     controller.destroy_vehicle(ego_id)
-    # 自動的にworld.tick()、ログ保存、クリーンアップが実行される
+    # 自動的にworld.tick()、車両破棄、ログ保存、クリーンアップが実行される
 """
 
 # メインAPI（推奨）

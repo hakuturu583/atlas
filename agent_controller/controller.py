@@ -134,6 +134,9 @@ class AgentController:
         )  # (trigger_fn, callback_fn, one_shot)
         self._tick_callback: Optional[Callable[[int], None]] = None
 
+        # 車両生存管理
+        self._spawned_vehicles: List[carla.Vehicle] = []  # スポーンした車両を追跡
+
     # ========================================
     # 接続管理
     # ========================================
@@ -266,15 +269,17 @@ class AgentController:
         blueprint_name: str,
         transform: carla.Transform,
         auto_register: bool = True,
+        auto_destroy: bool = True,
         **register_kwargs,
     ) -> Tuple[carla.Vehicle, Optional[int]]:
         """
-        車両をスポーン（オプションで自動登録）
+        車両をスポーン（オプションで自動登録・自動破棄）
 
         Args:
             blueprint_name: ブループリント名（例: "vehicle.tesla.model3"）
             transform: スポーン位置
             auto_register: Trueの場合、自動的にTraffic Managerに登録
+            auto_destroy: Trueの場合、デストラクタで自動的に破棄
             **register_kwargs: register_vehicle()に渡す追加パラメータ
 
         Returns:
@@ -288,10 +293,15 @@ class AgentController:
             ...     auto_register=True,
             ...     speed_percentage=80.0
             ... )
+            # with文を抜けると自動的に破棄される
         """
         blueprint_library = self.get_blueprint_library()
         blueprint = blueprint_library.find(blueprint_name)
         vehicle = self._world.spawn_actor(blueprint, transform)
+
+        # 自動破棄が有効な場合、追跡リストに追加
+        if auto_destroy:
+            self._spawned_vehicles.append(vehicle)
 
         if auto_register:
             vehicle_id = self.register_vehicle(vehicle, **register_kwargs)
@@ -304,6 +314,7 @@ class AgentController:
         blueprint_name: str,
         lane_coord: "LaneCoord",
         auto_register: bool = True,
+        auto_destroy: bool = True,
         **register_kwargs,
     ) -> Tuple[carla.Vehicle, Optional[int]]:
         """
@@ -313,6 +324,7 @@ class AgentController:
             blueprint_name: ブループリント名
             lane_coord: レーン座標（LaneCoord）
             auto_register: Trueの場合、自動的にTraffic Managerに登録
+            auto_destroy: Trueの場合、デストラクタで自動的に破棄
             **register_kwargs: register_vehicle()に渡す追加パラメータ
 
         Returns:
@@ -326,6 +338,7 @@ class AgentController:
             ...     lane_coord,
             ...     speed_percentage=80.0
             ... )
+            # with文を抜けると自動的に破棄される
         """
         from opendrive_utils import OpenDriveMap, SpawnHelper
 
@@ -334,7 +347,7 @@ class AgentController:
         transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
 
         return self.spawn_vehicle(
-            blueprint_name, transform, auto_register, **register_kwargs
+            blueprint_name, transform, auto_register, auto_destroy, **register_kwargs
         )
 
     def destroy_vehicle(self, vehicle_id: int) -> bool:
@@ -349,7 +362,12 @@ class AgentController:
         """
         vehicle = self.get_vehicle(vehicle_id)
         if vehicle:
+            # 追跡リストから削除
+            if vehicle in self._spawned_vehicles:
+                self._spawned_vehicles.remove(vehicle)
+
             vehicle.destroy()
+
             # 内部管理から削除
             if vehicle_id in self.tm_wrapper.vehicles:
                 del self.tm_wrapper.vehicles[vehicle_id]
@@ -1026,6 +1044,17 @@ class AgentController:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """コンテキストマネージャの終了（自動クリーンアップ）"""
+        # スポーンした車両を自動破棄
+        if self._spawned_vehicles:
+            print(f"\n=== Auto-destroying {len(self._spawned_vehicles)} vehicles ===")
+            for vehicle in self._spawned_vehicles[:]:  # コピーを作って反復
+                try:
+                    vehicle.destroy()
+                    print(f"  ✓ Vehicle {vehicle.id} destroyed")
+                except Exception as e:
+                    print(f"  ✗ Failed to destroy vehicle {vehicle.id}: {e}")
+            self._spawned_vehicles.clear()
+
         self.finalize()
         self.cleanup()
         return False

@@ -892,16 +892,17 @@ with AgentController(scenario_uuid="my_scenario") as controller:
     # シミュレーション実行（world.tick()は自動呼び出し）
     controller.run_simulation(total_frames=600)
 
-    # 車両を破棄
-    controller.destroy_vehicle(ego_id)
-    controller.destroy_vehicle(npc_id)
+    # 車両は自動的に破棄される（明示的な破棄は不要）
 
 # コンテキストマネージャを抜けると自動的に:
+# - スポーンした車両が破棄される
 # - ログがファイナライズ・保存される
 # - サマリーが出力される
 # - 同期モードが元に戻される
 # - クリーンアップが実行される
 ```
+
+**重要**: `spawn_vehicle()`や`spawn_vehicle_from_lane()`でスポーンした車両は、`auto_destroy=True`（デフォルト）の場合、コンテキストマネージャを抜けると自動的に破棄されます。明示的な`destroy_vehicle()`呼び出しは不要です。
 
 ### 利用可能なトリガー関数
 

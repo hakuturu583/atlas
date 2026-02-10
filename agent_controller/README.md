@@ -83,9 +83,12 @@ with AgentController(scenario_uuid="my_scenario") as controller:
     # シミュレーション実行（world.tick()は自動呼び出し）
     controller.run_simulation(total_frames=600)
 
-    # 車両を破棄
-    controller.destroy_vehicle(ego_id)
-    controller.destroy_vehicle(npc_id)
+    # 車両は自動的に破棄される（明示的な破棄は不要）
+
+# コンテキストマネージャを抜けると自動的に:
+# - スポーンした車両が破棄される
+# - ログがファイナライズ・保存される
+# - 同期モードが元に戻される
 ```
 
 ### パターン2: on_tickコールバック🆕
@@ -228,9 +231,9 @@ if not controller.check_connection():
 
 - `get_blueprint_library() -> carla.BlueprintLibrary` - ブループリントライブラリを取得
 - `get_map() -> carla.Map` - CARLAマップを取得
-- `spawn_vehicle(blueprint_name, transform, auto_register, **kwargs) -> (Vehicle, int)` - 車両をスポーン
-- `spawn_vehicle_from_lane(blueprint_name, lane_coord, auto_register, **kwargs) -> (Vehicle, int)` - レーン座標から車両をスポーン
-- `destroy_vehicle(vehicle_id) -> bool` - 車両を破棄
+- `spawn_vehicle(blueprint_name, transform, auto_register, auto_destroy, **kwargs) -> (Vehicle, int)` - 車両をスポーン
+- `spawn_vehicle_from_lane(blueprint_name, lane_coord, auto_register, auto_destroy, **kwargs) -> (Vehicle, int)` - レーン座標から車両をスポーン
+- `destroy_vehicle(vehicle_id) -> bool` - 車両を破棄（通常は不要、自動破棄される）
 
 ```python
 # レーン座標から車両をスポーン（推奨）
@@ -239,7 +242,8 @@ lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
 vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
     "vehicle.tesla.model3",
     lane_coord,
-    auto_register=True,  # 自動的にTraffic Managerに登録
+    auto_register=True,   # 自動的にTraffic Managerに登録
+    auto_destroy=True,    # デストラクタで自動破棄（デフォルト）
     speed_percentage=80.0
 )
 
@@ -248,12 +252,15 @@ vehicle, vehicle_id = controller.spawn_vehicle(
     "vehicle.tesla.model3",
     transform,
     auto_register=True,
+    auto_destroy=True,
     speed_percentage=80.0
 )
 
-# 車両を破棄
+# 車両を破棄（通常は不要、with文を抜けると自動破棄される）
 controller.destroy_vehicle(vehicle_id)
 ```
+
+**重要**: `auto_destroy=True`（デフォルト）の場合、コンテキストマネージャを抜けると自動的に車両が破棄されます。明示的な破棄は不要です。
 
 #### 車両登録・管理メソッド
 

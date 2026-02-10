@@ -134,9 +134,7 @@ def main():
         # シミュレーション実行（自動的にworld.tick()が呼ばれる）
         controller.run_simulation(total_frames=600)
 
-        # 車両を破棄
-        controller.destroy_vehicle(ego_id)
-        controller.destroy_vehicle(npc_id)
+        # 車両は自動的に破棄される（明示的な破棄は不要）
 
     print("\n=== Example Completed ===")
 

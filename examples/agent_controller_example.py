@@ -127,12 +127,8 @@ def main():
         # ========================================
         controller.run_simulation(total_frames=600)
 
-        # 車両を破棄
-        print("\nCleaning up vehicles...")
-        controller.destroy_vehicle(ego_id)
-        controller.destroy_vehicle(npc_id)
-
     # コンテキストマネージャを抜けると自動的に:
+    # - スポーンした車両が自動的に破棄される
     # - ログがファイナライズ・保存される
     # - サマリーが出力される
     # - 同期モードが元に戻される
