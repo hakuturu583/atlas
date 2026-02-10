@@ -3,10 +3,17 @@
 OpenDRIVE Utilities サンプルスクリプト
 
 このスクリプトは、opendrive_utilsライブラリの基本的な使い方を示します。
+AgentControllerクラスを使用して車両を制御します。
 """
 
 import carla
 import time
+import sys
+from pathlib import Path
+
+# agent_controllerをインポート
+sys.path.append(str(Path(__file__).parent.parent))
+
 from opendrive_utils import (
     OpenDriveMap,
     CoordinateTransformer,
@@ -15,6 +22,7 @@ from opendrive_utils import (
     LaneCoord,
     RoadCoord,
 )
+from agent_controller import AgentController
 
 
 def main():
@@ -79,74 +87,125 @@ def main():
     print("\n=== スポーン位置の計算 ===")
     spawn_helper = SpawnHelper(od_map)
 
+    # AgentControllerを初期化
+    controller = AgentController(
+        client=client,
+        scenario_uuid="opendrive_utils_demo",
+        enable_logging=True,
+    )
+
     # スポーンする車両のBlueprint
     blueprint_library = world.get_blueprint_library()
     vehicle_bp = blueprint_library.filter('vehicle.tesla.model3')[0]
 
     spawned_vehicles = []
+    vehicle_ids = []
 
-    # 3-1. レーン座標からスポーン
-    if available_lanes:
-        lane_id = available_lanes[0]
-        lane_coord = LaneCoord(road_id=target_road_id, lane_id=lane_id, s=50.0)
-        transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
+    try:
+        # 3-1. レーン座標からスポーン
+        if available_lanes:
+            lane_id = available_lanes[0]
+            lane_coord = LaneCoord(road_id=target_road_id, lane_id=lane_id, s=50.0)
+            transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
 
-        if transform:
-            print(f"\nレーン座標からスポーン: {lane_coord}")
-            print(f"  Transform: location=({transform.location.x:.2f}, {transform.location.y:.2f}, {transform.location.z:.2f}), "
-                  f"yaw={transform.rotation.yaw:.2f}°")
+            if transform:
+                print(f"\nレーン座標からスポーン: {lane_coord}")
+                print(f"  Transform: location=({transform.location.x:.2f}, {transform.location.y:.2f}, {transform.location.z:.2f}), "
+                      f"yaw={transform.rotation.yaw:.2f}°")
 
-            try:
-                vehicle = world.spawn_actor(vehicle_bp, transform)
-                spawned_vehicles.append(vehicle)
-                print("  ✓ 車両をスポーンしました")
-            except RuntimeError as e:
-                print(f"  ✗ スポーン失敗: {e}")
+                try:
+                    vehicle = world.spawn_actor(vehicle_bp, transform)
+                    spawned_vehicles.append(vehicle)
 
-        # 3-2. 指定距離前方にスポーン
-        forward_transform = spawn_helper.get_spawn_transform_at_distance(
-            lane_coord,
-            distance=30.0
-        )
-        if forward_transform:
-            print(f"\n30m前方にスポーン:")
-            print(f"  Transform: location=({forward_transform.location.x:.2f}, {forward_transform.location.y:.2f})")
+                    # AgentControllerに登録
+                    vehicle_id = controller.register_vehicle(
+                        vehicle=vehicle,
+                        auto_lane_change=False,
+                        distance_to_leading=5.0,
+                        speed_percentage=80.0,
+                    )
+                    vehicle_ids.append(vehicle_id)
 
-            try:
-                vehicle = world.spawn_actor(vehicle_bp, forward_transform)
-                spawned_vehicles.append(vehicle)
-                print("  ✓ 車両をスポーンしました")
-            except RuntimeError as e:
-                print(f"  ✗ スポーン失敗: {e}")
+                    print(f"  ✓ 車両をスポーンしました (vehicle_id={vehicle_id})")
+                except RuntimeError as e:
+                    print(f"  ✗ スポーン失敗: {e}")
 
-        # 3-3. レーン上に複数の車両を配置
-        print(f"\nレーン上に3台の車両を20m間隔で配置:")
-        transforms = spawn_helper.get_spawn_points_along_lane(
-            lane_coord,
-            num_points=3,
-            spacing=20.0
-        )
-        for i, t in enumerate(transforms):
-            try:
-                vehicle = world.spawn_actor(vehicle_bp, t)
-                spawned_vehicles.append(vehicle)
-                print(f"  ✓ 車両{i+1}をスポーン: ({t.location.x:.2f}, {t.location.y:.2f})")
-            except RuntimeError as e:
-                print(f"  ✗ 車両{i+1}のスポーン失敗: {e}")
+            # 3-2. 指定距離前方にスポーン
+            forward_transform = spawn_helper.get_spawn_transform_at_distance(
+                lane_coord,
+                distance=30.0
+            )
+            if forward_transform:
+                print(f"\n30m前方にスポーン:")
+                print(f"  Transform: location=({forward_transform.location.x:.2f}, {forward_transform.location.y:.2f})")
 
-    # 4. スポーンした車両を表示
-    print(f"\n=== 結果 ===")
-    print(f"スポーンした車両数: {len(spawned_vehicles)}")
+                try:
+                    vehicle = world.spawn_actor(vehicle_bp, forward_transform)
+                    spawned_vehicles.append(vehicle)
 
-    if spawned_vehicles:
-        print("\n5秒間待機します（スペクテーターで確認してください）...")
-        time.sleep(5)
+                    # AgentControllerに登録
+                    vehicle_id = controller.register_vehicle(
+                        vehicle=vehicle,
+                        auto_lane_change=False,
+                        distance_to_leading=5.0,
+                        speed_percentage=80.0,
+                    )
+                    vehicle_ids.append(vehicle_id)
 
+                    print(f"  ✓ 車両をスポーンしました (vehicle_id={vehicle_id})")
+                except RuntimeError as e:
+                    print(f"  ✗ スポーン失敗: {e}")
+
+            # 3-3. レーン上に複数の車両を配置
+            print(f"\nレーン上に3台の車両を20m間隔で配置:")
+            transforms = spawn_helper.get_spawn_points_along_lane(
+                lane_coord,
+                num_points=3,
+                spacing=20.0
+            )
+            for i, t in enumerate(transforms):
+                try:
+                    vehicle = world.spawn_actor(vehicle_bp, t)
+                    spawned_vehicles.append(vehicle)
+
+                    # AgentControllerに登録
+                    vehicle_id = controller.register_vehicle(
+                        vehicle=vehicle,
+                        auto_lane_change=False,
+                        distance_to_leading=5.0,
+                        speed_percentage=80.0,
+                    )
+                    vehicle_ids.append(vehicle_id)
+
+                    print(f"  ✓ 車両{i+1}をスポーン: ({t.location.x:.2f}, {t.location.y:.2f}) (vehicle_id={vehicle_id})")
+                except RuntimeError as e:
+                    print(f"  ✗ 車両{i+1}のスポーン失敗: {e}")
+
+        # 4. スポーンした車両を表示
+        print(f"\n=== 結果 ===")
+        print(f"スポーンした車両数: {len(spawned_vehicles)}")
+        print(f"AgentControllerで制御中: {len(vehicle_ids)}台")
+
+        if spawned_vehicles:
+            print("\n5秒間待機します（スペクテーターで確認してください）...")
+            time.sleep(5)
+
+    finally:
         # クリーンアップ
-        print("\n車両を削除中...")
-        for vehicle in spawned_vehicles:
-            vehicle.destroy()
-        print("✓ すべての車両を削除しました")
+        if spawned_vehicles:
+            print("\n車両を削除中...")
+            for vehicle in spawned_vehicles:
+                vehicle.destroy()
+            print("✓ すべての車両を削除しました")
+
+        # AgentControllerのログをファイナライズ
+        print("\nログを保存中...")
+        stamp_log, command_log = controller.finalize()
+        if stamp_log:
+            print(f"  STAMP log: {stamp_log}")
+        if command_log:
+            print(f"  Command log: {command_log}")
+        controller.cleanup()
 
     print("\n完了!")
 

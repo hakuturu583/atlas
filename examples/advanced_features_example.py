@@ -3,15 +3,23 @@
 OpenDRIVE高度な機能のサンプルスクリプト
 
 交差点、信号機、停止線などの機能を使ったシナリオ例
+AgentControllerクラスを使用して車両を制御します
 """
 
 import carla
 import time
+import sys
+from pathlib import Path
+
+# agent_controllerをインポート
+sys.path.append(str(Path(__file__).parent.parent))
+
 from opendrive_utils import (
     OpenDriveMap,
     AdvancedFeatures,
     LaneCoord,
 )
+from agent_controller import AgentController
 
 
 def demo_traffic_signals(world, advanced):
@@ -129,7 +137,7 @@ def demo_junctions(world, advanced):
     return first_junction_id, junctions
 
 
-def demo_spawn_scenarios(world, advanced, signals):
+def demo_spawn_scenarios(world, client, advanced, signals):
     """信号機を使ったスポーンシナリオ"""
     print("\n" + "=" * 60)
     print("=== 信号機シナリオ ===")
@@ -137,10 +145,18 @@ def demo_spawn_scenarios(world, advanced, signals):
 
     if not signals:
         print("信号機が見つからないため、スキップします")
-        return []
+        return [], None
 
     spawned_vehicles = []
+    vehicle_ids = []
     blueprint = world.get_blueprint_library().filter('vehicle.tesla.model3')[0]
+
+    # AgentControllerを初期化
+    controller = AgentController(
+        client=client,
+        scenario_uuid="advanced_features_demo",
+        enable_logging=True,
+    )
 
     # 最初の信号機の手前に車両をスポーン
     signal = signals[0]
@@ -170,7 +186,19 @@ def demo_spawn_scenarios(world, advanced, signals):
                 try:
                     vehicle = world.spawn_actor(blueprint, transform)
                     spawned_vehicles.append(vehicle)
+
+                    # AgentControllerに登録
+                    vehicle_id = controller.register_vehicle(
+                        vehicle=vehicle,
+                        auto_lane_change=False,
+                        distance_to_leading=5.0,
+                        speed_percentage=60.0,
+                        ignore_lights=False,  # 信号を守る
+                    )
+                    vehicle_ids.append(vehicle_id)
+
                     print(f"✓ 信号機の10m手前に車両をスポーン: ({transform.location.x:.2f}, {transform.location.y:.2f})")
+                    print(f"  AgentControllerに登録: vehicle_id={vehicle_id}")
                 except RuntimeError as e:
                     print(f"✗ スポーン失敗: {e}")
 
@@ -180,11 +208,24 @@ def demo_spawn_scenarios(world, advanced, signals):
                 try:
                     vehicle2 = world.spawn_actor(blueprint, transform2)
                     spawned_vehicles.append(vehicle2)
+
+                    # AgentControllerに登録
+                    vehicle_id2 = controller.register_vehicle(
+                        vehicle=vehicle2,
+                        auto_lane_change=False,
+                        distance_to_leading=5.0,
+                        speed_percentage=60.0,
+                        ignore_lights=False,  # 信号を守る
+                    )
+                    vehicle_ids.append(vehicle_id2)
+
                     print(f"✓ 信号機の30m手前に車両をスポーン: ({transform2.location.x:.2f}, {transform2.location.y:.2f})")
+                    print(f"  AgentControllerに登録: vehicle_id={vehicle_id2}")
                 except RuntimeError as e:
                     print(f"✗ スポーン失敗: {e}")
 
-    return spawned_vehicles
+    print(f"\n✓ {len(vehicle_ids)}台の車両をAgentControllerで制御中")
+    return spawned_vehicles, controller
 
 
 def demo_junction_navigation(world, advanced, junction_id, junctions):
@@ -236,29 +277,45 @@ def main():
     od_map = OpenDriveMap(world)
     advanced = AdvancedFeatures(od_map)
 
-    # 各デモを実行
-    signals = demo_traffic_signals(world, advanced)
-    demo_stop_lines(world, advanced, signals)
-    junction_id, junctions = demo_junctions(world, advanced)
-    spawned_vehicles = demo_spawn_scenarios(world, advanced, signals)
-    demo_junction_navigation(world, advanced, junction_id, junctions)
+    controller = None
+    spawned_vehicles = []
 
-    # 結果表示
-    print("\n" + "=" * 60)
-    print("=== デモ完了 ===")
-    print("=" * 60)
-    print(f"\nスポーンした車両: {len(spawned_vehicles)}台")
-    print("マーカーは10秒間表示されます")
+    try:
+        # 各デモを実行
+        signals = demo_traffic_signals(world, advanced)
+        demo_stop_lines(world, advanced, signals)
+        junction_id, junctions = demo_junctions(world, advanced)
+        spawned_vehicles, controller = demo_spawn_scenarios(world, client, advanced, signals)
+        demo_junction_navigation(world, advanced, junction_id, junctions)
 
-    if spawned_vehicles:
-        print("\n10秒間待機します（スペクテーターで確認してください）...")
-        time.sleep(10)
+        # 結果表示
+        print("\n" + "=" * 60)
+        print("=== デモ完了 ===")
+        print("=" * 60)
+        print(f"\nスポーンした車両: {len(spawned_vehicles)}台")
+        print("マーカーは10秒間表示されます")
 
+        if spawned_vehicles:
+            print("\n10秒間待機します（スペクテーターで確認してください）...")
+            time.sleep(10)
+
+    finally:
         # クリーンアップ
-        print("\n車両を削除中...")
-        for vehicle in spawned_vehicles:
-            vehicle.destroy()
-        print("✓ すべての車両を削除しました")
+        if spawned_vehicles:
+            print("\n車両を削除中...")
+            for vehicle in spawned_vehicles:
+                vehicle.destroy()
+            print("✓ すべての車両を削除しました")
+
+        # AgentControllerのログをファイナライズ
+        if controller:
+            print("\nログを保存中...")
+            stamp_log, command_log = controller.finalize()
+            if stamp_log:
+                print(f"  STAMP log: {stamp_log}")
+            if command_log:
+                print(f"  Command log: {command_log}")
+            controller.cleanup()
 
     print("\n完了!")
 
