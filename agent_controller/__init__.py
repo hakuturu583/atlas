@@ -12,6 +12,8 @@ agent_controller - CARLA Traffic Manager Wrapper Package
 - レーンチェンジ、カットイン、タイミング突入などの高レベル振る舞い
 - STAMP状態遷移ロギング
 - ユーザー指示の追跡と記録
+- 安全性メトリクス（TTC、急ブレーキ、急加速など）の自動計算
+- 意味論的カバレッジ計算
 - コンテキストマネージャによる自動クリーンアップ
 
 推奨される使い方（トリガー関数ベース）:
@@ -41,6 +43,7 @@ from .vehicle_config import (
     RECKLESS_DRIVER,
     NORMAL_DRIVER,
 )
+from .metrics import SafetyMetrics, MetricsConfig, MetricsEvent
 
 # 低レベルAPI（上級ユーザー向け）
 from .traffic_manager_wrapper import TrafficManagerWrapper
@@ -64,6 +67,10 @@ __all__ = [
     "CAUTIOUS_DRIVER",
     "RECKLESS_DRIVER",
     "NORMAL_DRIVER",
+    # メトリクス
+    "SafetyMetrics",
+    "MetricsConfig",
+    "MetricsEvent",
     # 低レベルAPI
     "TrafficManagerWrapper",
     "LaneChangeBehavior",

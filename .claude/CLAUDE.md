@@ -833,7 +833,17 @@ uv run python scripts/analyze_scenarios.py <logical_uuid>
    - 実行メトリクス（実行時間、移動距離など）の記録
    - JSONファイルで保存（`data/logs/commands/`）
 
-4. **将来のカバレッジ計測**
+4. **安全性メトリクス** 🆕
+   - TTC (Time To Collision): 前方車両への衝突時間
+   - 急ブレーキ検出: 減速度が閾値を超えた場合
+   - 急加速検出: 加速度が閾値を超えた場合
+   - 横方向加速度: レーンチェンジ時の横加速度
+   - ジャーク: 加速度の変化率
+   - 最小車間距離: 前方車両との最小距離
+   - 意味論的カバレッジ: イベント発生有無に基づくカバレッジ
+   - JSONファイルで保存（`data/logs/metrics/`）
+
+5. **将来のカバレッジ計測**
    - NPCロジックを統一し、実行パスを記録
    - 将来的にカバレッジ計測の基盤を提供
 
@@ -968,6 +978,62 @@ with AgentController(
             print("✓ Reconnected successfully")
 ```
 
+### 安全性メトリクス機能（🆕）
+
+TTC、急ブレーキ、急加速などの自動運転評価指標を自動計算します。
+
+```python
+from agent_controller import AgentController, MetricsConfig
+
+# メトリクス設定をカスタマイズ
+metrics_config = MetricsConfig(
+    ttc_threshold=3.0,                    # TTC閾値: 3秒以下で警告
+    sudden_braking_threshold=5.0,         # 急ブレーキ: 5 m/s²以上で検出
+    sudden_acceleration_threshold=4.0,    # 急加速: 4 m/s²以上で検出
+    lateral_acceleration_threshold=3.0,   # 横方向加速度: 3 m/s²以上で検出
+    jerk_threshold=10.0,                  # ジャーク: 10 m/s³以上で検出
+    min_distance_threshold=2.0,           # 最小車間距離: 2m以下で警告
+)
+
+# メトリクス計算を有効化
+with AgentController(
+    scenario_uuid="my_scenario",
+    enable_metrics=True,           # メトリクス有効化
+    metrics_config=metrics_config, # カスタム設定
+) as controller:
+    # シナリオ実行...
+    controller.run_simulation(total_frames=600)
+
+    # メトリクス取得
+    metrics = controller.get_metrics()
+    if metrics:
+        # イベント取得
+        sudden_braking = metrics.get_events_by_type("sudden_braking")
+        low_ttc = metrics.get_events_by_type("low_ttc")
+
+        print(f"Sudden Braking Events: {len(sudden_braking)}")
+        print(f"Low TTC Events: {len(low_ttc)}")
+
+        # 意味論的カバレッジ取得
+        coverage = controller.get_semantic_coverage()
+        print(f"Coverage: {coverage}")
+
+        # カバレッジ率を計算
+        coverage_rate = sum(coverage.values()) / len(coverage) * 100
+        print(f"Coverage Rate: {coverage_rate:.1f}%")
+
+# メトリクスログはdata/logs/metrics/に保存される
+```
+
+#### 計算されるメトリクス
+
+- **TTC**: 前方車両への衝突時間（秒）
+- **急ブレーキ**: 減速度が閾値を超えた場合（m/s²）
+- **急加速**: 加速度が閾値を超えた場合（m/s²）
+- **横方向加速度**: レーンチェンジ時の横加速度（m/s²）
+- **ジャーク**: 加速度の変化率（m/s³）
+- **最小車間距離**: 前方車両との最小距離（m）
+
 ### 低レベルAPI（上級者向け）
 
 より細かい制御が必要な場合は、低レベルAPIを直接使用できます。
@@ -1096,12 +1162,59 @@ agent_controllerに必要な機能が不足している場合：
 }
 ```
 
+#### メトリクスログ 🆕
+
+```json
+{
+  "scenario_uuid": "uuid-123",
+  "config": {
+    "ttc_threshold": 3.0,
+    "sudden_braking_threshold": 5.0,
+    "sudden_acceleration_threshold": 4.0,
+    "lateral_acceleration_threshold": 3.0,
+    "jerk_threshold": 10.0,
+    "min_distance_threshold": 2.0,
+    "speed_violation_margin": 10.0
+  },
+  "summary": {
+    "total_events": 12,
+    "event_counts": {
+      "sudden_braking": 3,
+      "low_ttc": 5,
+      "sudden_acceleration": 2,
+      "high_jerk": 2
+    },
+    "min_ttc_per_vehicle": {
+      "42": 2.1,
+      "43": 2.8
+    },
+    "min_distances": {
+      "42": 1.5,
+      "43": 2.3
+    }
+  },
+  "events": [
+    {
+      "frame": 150,
+      "timestamp": 1234567890.0,
+      "event_type": "sudden_braking",
+      "vehicle_id": 42,
+      "value": 6.2,
+      "threshold": 5.0,
+      "description": "急ブレーキ検出: 6.20 m/s²",
+      "location": [100.5, 50.2, 0.3]
+    }
+  ]
+}
+```
+
 ### 参考資料
 
 - **詳細ドキュメント**: `agent_controller/README.md`
 - **使用例（推奨・最新）**: `examples/agent_controller_callback.py` - コールバックを使った最もシンプルな例 🆕
 - **使用例（シンプル）**: `examples/agent_controller_simple.py` - AgentControllerの基本的な使い方
 - **使用例（詳細）**: `examples/agent_controller_example.py` - すべての機能を使った例
+- **使用例（メトリクス）**: `examples/agent_controller_metrics.py` - 安全性メトリクスの使い方 🆕
 - **APIリファレンス**: 各モジュールのdocstring参照
 
 ---

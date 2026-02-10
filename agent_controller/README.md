@@ -10,6 +10,8 @@ CARLA Traffic Managerをラップし、高レベルAPIを提供するパッケ�
 - **高レベルAPI**: レーンチェンジ、カットイン、タイミング突入などの振る舞いを簡単に記述
 - **STAMPロギング**: STAMP理論に基づいた状態遷移とcontrol actionを記録
 - **指示追跡**: ユーザーからの指示の完遂状態を記録
+- **安全性メトリクス**: TTC、急ブレーキ、急加速などの自動運転評価指標を自動計算 🆕
+- **意味論的カバレッジ**: イベント発生有無に基づくカバレッジ計測 🆕
 - **Traffic Manager統合**: CARLA Traffic Managerの機能をすべて利用可能
 - **将来のカバレッジ計測**: NPCロジックを統一し、カバレッジ計測の基盤を提供
 
@@ -243,6 +245,97 @@ aggressive_vehicle, _ = controller.spawn_vehicle_from_lane(
     lane_coord,
     config=AGGRESSIVE_DRIVER
 )
+```
+
+### MetricsConfig（メトリクス設定）🆕
+
+安全性メトリクスの計算設定をまとめたデータクラス。自動運転システムの評価指標を自動計算します。
+
+```python
+from agent_controller import AgentController, MetricsConfig
+
+# カスタムメトリクス設定
+metrics_config = MetricsConfig(
+    ttc_threshold=3.0,                    # TTC閾値（秒）
+    sudden_braking_threshold=5.0,         # 急ブレーキ閾値（m/s²）
+    sudden_acceleration_threshold=4.0,    # 急加速閾値（m/s²）
+    lateral_acceleration_threshold=3.0,   # 横方向加速度閾値（m/s²）
+    jerk_threshold=10.0,                  # ジャーク閾値（m/s³）
+    min_distance_threshold=2.0,           # 最小車間距離閾値（m）
+    speed_violation_margin=10.0,          # 速度違反マージン（km/h）
+)
+
+# メトリクス計算を有効化
+with AgentController(
+    scenario_uuid="my_scenario",
+    enable_metrics=True,           # メトリクス有効化
+    metrics_config=metrics_config, # カスタム設定
+) as controller:
+    # シナリオ実行...
+    controller.run_simulation(total_frames=600)
+
+    # メトリクス取得
+    metrics = controller.get_metrics()
+    if metrics:
+        # イベント取得
+        sudden_braking = metrics.get_events_by_type("sudden_braking")
+        low_ttc = metrics.get_events_by_type("low_ttc")
+
+        # 意味論的カバレッジ取得
+        coverage = controller.get_semantic_coverage()
+        print(f"Coverage: {coverage}")
+```
+
+#### 計算されるメトリクス
+
+以下の安全性メトリクスが自動的に計算されます：
+
+- **TTC (Time To Collision)**: 前方車両への衝突時間（秒）
+- **急ブレーキ (Sudden Braking)**: 減速度が閾値を超えた場合（m/s²）
+- **急加速 (Sudden Acceleration)**: 加速度が閾値を超えた場合（m/s²）
+- **横方向加速度 (Lateral Acceleration)**: レーンチェンジ時の横加速度（m/s²）
+- **ジャーク (Jerk)**: 加速度の変化率（m/s³）
+- **最小車間距離 (Minimum Distance)**: 前方車両との最小距離（m）
+- **速度違反 (Speed Violation)**: 制限速度超過（km/h）
+
+#### メトリクスの出力
+
+メトリクスは`data/logs/metrics/`に保存されます：
+
+```json
+{
+  "scenario_uuid": "my_scenario",
+  "config": {...},
+  "summary": {
+    "total_events": 12,
+    "event_counts": {
+      "sudden_braking": 3,
+      "low_ttc": 5,
+      "sudden_acceleration": 2,
+      "high_jerk": 2
+    },
+    "min_ttc_per_vehicle": {
+      "42": 2.1,
+      "43": 2.8
+    },
+    "min_distances": {
+      "42": 1.5,
+      "43": 2.3
+    }
+  },
+  "events": [
+    {
+      "frame": 150,
+      "timestamp": 1234567890.0,
+      "event_type": "sudden_braking",
+      "vehicle_id": 42,
+      "value": 6.2,
+      "threshold": 5.0,
+      "description": "急ブレーキ検出: 6.20 m/s²",
+      "location": [100.5, 50.2, 0.3]
+    }
+  ]
+}
 ```
 
 ### AgentController（推奨）
@@ -782,6 +875,35 @@ failed = [cmd for cmd in log_data["commands"] if cmd["status"] == "failed"]
 for cmd in failed:
     print(f"\nFailed: {cmd['description']}")
     print(f"  Error: {cmd['error_message']}")
+```
+
+### 安全性メトリクスの分析 🆕
+
+```python
+import json
+from pathlib import Path
+
+# メトリクスログを読み込む
+log_path = Path("data/logs/metrics/metrics_uuid-123.json")
+with open(log_path) as f:
+    metrics_data = json.load(f)
+
+# サマリーを表示
+summary = metrics_data["summary"]
+print(f"Total Events: {summary['total_events']}")
+print(f"Event Counts: {summary['event_counts']}")
+
+# 最小TTCを確認
+min_ttc = summary["min_ttc_per_vehicle"]
+for vehicle_id, ttc in min_ttc.items():
+    print(f"Vehicle {vehicle_id}: Min TTC = {ttc:.2f}s")
+
+# 特定のイベントを分析
+events = metrics_data["events"]
+sudden_braking_events = [e for e in events if e["event_type"] == "sudden_braking"]
+print(f"\nSudden Braking Events: {len(sudden_braking_events)}")
+for event in sudden_braking_events[:5]:
+    print(f"  Frame {event['frame']}: {event['description']}")
 ```
 
 ## 🎯 将来の展望

@@ -20,6 +20,7 @@ from .behaviors import (
 from .stamp_logger import STAMPLogger, ControlAction, StateType
 from .command_tracker import CommandTracker, CommandStatus
 from .vehicle_config import VehicleConfig
+from .metrics import SafetyMetrics, MetricsConfig
 
 
 class AgentController:
@@ -51,6 +52,8 @@ class AgentController:
         carla_timeout: float = 10.0,
         tm_port: int = 8000,
         enable_logging: bool = True,
+        enable_metrics: bool = False,
+        metrics_config: Optional[MetricsConfig] = None,
         synchronous_mode: bool = True,
         fixed_delta_seconds: float = 0.05,
         max_retries: int = 3,
@@ -67,6 +70,8 @@ class AgentController:
             carla_timeout: 接続タイムアウト（秒）
             tm_port: Traffic Managerのポート
             enable_logging: ロギングを有効化するか
+            enable_metrics: メトリクス計算を有効化するか
+            metrics_config: メトリクス設定（Noneの場合はデフォルト設定）
             synchronous_mode: 同期モードを有効化するか
             fixed_delta_seconds: 固定タイムステップ（秒）
             max_retries: 接続失敗時の最大リトライ回数
@@ -74,6 +79,7 @@ class AgentController:
         """
         self.scenario_uuid = scenario_uuid
         self.enable_logging = enable_logging
+        self.enable_metrics = enable_metrics
         self.synchronous_mode = synchronous_mode
         self.fixed_delta_seconds = fixed_delta_seconds
         self._carla_host = carla_host
@@ -112,6 +118,15 @@ class AgentController:
         else:
             self.stamp_logger = None
             self.command_tracker = None
+
+        # メトリクス初期化
+        if enable_metrics:
+            self.metrics = SafetyMetrics(
+                scenario_uuid=scenario_uuid,
+                config=metrics_config,
+            )
+        else:
+            self.metrics = None
 
         # Traffic Manager Wrapper初期化
         self.tm_wrapper = TrafficManagerWrapper(
@@ -932,6 +947,15 @@ class AgentController:
                 except Exception as e:
                     print(f"⚠ Error in tick callback at frame {frame}: {e}")
 
+            # メトリクスを更新（登録されている車両すべて）
+            if self.metrics:
+                timestamp = time.time()
+                for vehicle in self._spawned_vehicles:
+                    try:
+                        self.metrics.update(frame, timestamp, vehicle, self._world)
+                    except Exception as e:
+                        print(f"⚠ Error updating metrics for vehicle {vehicle.id}: {e}")
+
             # World更新
             self._world.tick()
 
@@ -1045,18 +1069,43 @@ class AgentController:
         return StateType.IDLE
 
     # ========================================
+    # メトリクス
+    # ========================================
+
+    def get_metrics(self) -> Optional[SafetyMetrics]:
+        """
+        メトリクスオブジェクトを取得
+
+        Returns:
+            SafetyMetricsオブジェクト（メトリクスが無効な場合はNone）
+        """
+        return self.metrics
+
+    def get_semantic_coverage(self) -> Optional[dict]:
+        """
+        意味論的カバレッジを取得
+
+        Returns:
+            カバレッジ辞書（メトリクスが無効な場合はNone）
+        """
+        if self.metrics:
+            return self.metrics.get_semantic_coverage()
+        return None
+
+    # ========================================
     # クリーンアップ
     # ========================================
 
-    def finalize(self) -> tuple[Optional[str], Optional[str]]:
+    def finalize(self) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """
         ログをファイナライズして保存
 
         Returns:
-            (STAMP log path, Command log path)
+            (STAMP log path, Command log path, Metrics log path)
         """
         stamp_log_path = None
         command_log_path = None
+        metrics_log_path = None
 
         if self.stamp_logger:
             stamp_log_path = str(self.stamp_logger.finalize())
@@ -1066,7 +1115,11 @@ class AgentController:
             command_log_path = str(self.command_tracker.finalize())
             self.command_tracker.print_summary()
 
-        return stamp_log_path, command_log_path
+        if self.metrics:
+            metrics_log_path = str(self.metrics.finalize())
+            self.metrics.print_summary()
+
+        return stamp_log_path, command_log_path, metrics_log_path
 
     def cleanup(self) -> None:
         """クリーンアップ（車両のautopilot解除、設定の復元）"""
