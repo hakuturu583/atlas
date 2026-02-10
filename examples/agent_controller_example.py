@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from agent_controller import AgentController
-from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
+from opendrive_utils import LaneCoord
 
 
 def main():
