@@ -27,53 +27,38 @@ def main():
         synchronous_mode=True,
         fixed_delta_seconds=0.05,  # 20 FPS
     ) as controller:
-        world = controller.world
-        print(f"Connected to CARLA: {world.get_map().name}\n")
+        print(f"Connected to CARLA: {controller.get_map().name}\n")
 
         # 接続確認
         if controller.is_alive():
             print("✓ CARLA server is alive\n")
 
-        # 車両をスポーン
+        # 車両をスポーン（自動登録）
         print("Spawning vehicles...")
-        blueprint_library = world.get_blueprint_library()
-        vehicle_bp = blueprint_library.find("vehicle.tesla.model3")
 
-        # opendrive_utilsでスポーン位置を計算
-        od_map = OpenDriveMap(world)
-        spawn_helper = SpawnHelper(od_map)
-
+        # Ego車両（レーン座標から自動スポーン＆登録）
         lane_coord_1 = LaneCoord(road_id=10, lane_id=-1, s=50.0)
-        transform_1 = spawn_helper.get_spawn_transform_from_lane(lane_coord_1)
-
-        lane_coord_2 = LaneCoord(road_id=10, lane_id=-1, s=80.0)
-        transform_2 = spawn_helper.get_spawn_transform_from_lane(lane_coord_2)
-
-        # Ego車両
-        ego_vehicle = world.spawn_actor(vehicle_bp, transform_1)
-        print(f"  Ego vehicle spawned: ID={ego_vehicle.id}")
-
-        # NPC車両
-        npc_vehicle = world.spawn_actor(vehicle_bp, transform_2)
-        print(f"  NPC vehicle spawned: ID={npc_vehicle.id}")
-
-        # 車両を登録
-        print("\nRegistering vehicles...")
-        ego_id = controller.register_vehicle(
-            vehicle=ego_vehicle,
-            auto_lane_change=False,  # 手動でレーンチェンジを制御
+        ego_vehicle, ego_id = controller.spawn_vehicle_from_lane(
+            "vehicle.tesla.model3",
+            lane_coord_1,
+            auto_register=True,
+            auto_lane_change=False,
             distance_to_leading=5.0,
             speed_percentage=80.0,
         )
-        print(f"  Ego vehicle registered: ID={ego_id}")
+        print(f"  Ego vehicle spawned: ID={ego_id}")
 
-        npc_id = controller.register_vehicle(
-            vehicle=npc_vehicle,
+        # NPC車両（レーン座標から自動スポーン＆登録）
+        lane_coord_2 = LaneCoord(road_id=10, lane_id=-1, s=80.0)
+        npc_vehicle, npc_id = controller.spawn_vehicle_from_lane(
+            "vehicle.tesla.model3",
+            lane_coord_2,
+            auto_register=True,
             auto_lane_change=True,
             distance_to_leading=3.0,
             speed_percentage=60.0,
         )
-        print(f"  NPC vehicle registered: ID={npc_id}")
+        print(f"  NPC vehicle spawned: ID={npc_id}")
 
         # ========================================
         # シナリオをトリガー関数で定義
@@ -144,8 +129,8 @@ def main():
 
         # 車両を破棄
         print("\nCleaning up vehicles...")
-        ego_vehicle.destroy()
-        npc_vehicle.destroy()
+        controller.destroy_vehicle(ego_id)
+        controller.destroy_vehicle(npc_id)
 
     # コンテキストマネージャを抜けると自動的に:
     # - ログがファイナライズ・保存される

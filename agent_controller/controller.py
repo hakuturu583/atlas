@@ -92,17 +92,17 @@ class AgentController:
             self.client = client
 
         # Worldを取得
-        self.world = self.client.get_world()
+        self._world = self.client.get_world()
 
         # 同期モード設定を保存（終了時に復元するため）
-        self._original_settings = self.world.get_settings()
+        self._original_settings = self._world.get_settings()
 
         # 同期モードを設定
         if synchronous_mode:
-            settings = self.world.get_settings()
+            settings = self._world.get_settings()
             settings.synchronous_mode = True
             settings.fixed_delta_seconds = fixed_delta_seconds
-            self.world.apply_settings(settings)
+            self._world.apply_settings(settings)
 
         # ロガー初期化
         if enable_logging:
@@ -206,14 +206,14 @@ class AgentController:
         try:
             print("Attempting to reconnect to CARLA...")
             self.client = self._connect_with_retry()
-            self.world = self.client.get_world()
+            self._world = self.client.get_world()
 
             # 同期モードを再設定
             if self.synchronous_mode:
-                settings = self.world.get_settings()
+                settings = self._world.get_settings()
                 settings.synchronous_mode = True
                 settings.fixed_delta_seconds = self.fixed_delta_seconds
-                self.world.apply_settings(settings)
+                self._world.apply_settings(settings)
 
             # Traffic Manager Wrapperを再初期化
             self.tm_wrapper = TrafficManagerWrapper(
@@ -238,6 +238,125 @@ class AgentController:
             サーバーが生きていればTrue
         """
         return self.check_connection()
+
+    # ========================================
+    # 車両スポーンとブループリント
+    # ========================================
+
+    def get_blueprint_library(self) -> carla.BlueprintLibrary:
+        """
+        ブループリントライブラリを取得
+
+        Returns:
+            ブループリントライブラリ
+        """
+        return self._world.get_blueprint_library()
+
+    def get_map(self) -> carla.Map:
+        """
+        CARLAマップを取得
+
+        Returns:
+            CARLAマップ
+        """
+        return self._world.get_map()
+
+    def spawn_vehicle(
+        self,
+        blueprint_name: str,
+        transform: carla.Transform,
+        auto_register: bool = True,
+        **register_kwargs,
+    ) -> Tuple[carla.Vehicle, Optional[int]]:
+        """
+        車両をスポーン（オプションで自動登録）
+
+        Args:
+            blueprint_name: ブループリント名（例: "vehicle.tesla.model3"）
+            transform: スポーン位置
+            auto_register: Trueの場合、自動的にTraffic Managerに登録
+            **register_kwargs: register_vehicle()に渡す追加パラメータ
+
+        Returns:
+            (車両アクター, 車両ID)
+            ※ auto_register=Falseの場合、車両IDはNone
+
+        使用例:
+            >>> vehicle, vehicle_id = controller.spawn_vehicle(
+            ...     "vehicle.tesla.model3",
+            ...     transform,
+            ...     auto_register=True,
+            ...     speed_percentage=80.0
+            ... )
+        """
+        blueprint_library = self.get_blueprint_library()
+        blueprint = blueprint_library.find(blueprint_name)
+        vehicle = self._world.spawn_actor(blueprint, transform)
+
+        if auto_register:
+            vehicle_id = self.register_vehicle(vehicle, **register_kwargs)
+            return vehicle, vehicle_id
+        else:
+            return vehicle, None
+
+    def spawn_vehicle_from_lane(
+        self,
+        blueprint_name: str,
+        lane_coord: "LaneCoord",
+        auto_register: bool = True,
+        **register_kwargs,
+    ) -> Tuple[carla.Vehicle, Optional[int]]:
+        """
+        レーン座標から車両をスポーン（opendrive_utilsが必要）
+
+        Args:
+            blueprint_name: ブループリント名
+            lane_coord: レーン座標（LaneCoord）
+            auto_register: Trueの場合、自動的にTraffic Managerに登録
+            **register_kwargs: register_vehicle()に渡す追加パラメータ
+
+        Returns:
+            (車両アクター, 車両ID)
+
+        使用例:
+            >>> from opendrive_utils import LaneCoord
+            >>> lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+            >>> vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
+            ...     "vehicle.tesla.model3",
+            ...     lane_coord,
+            ...     speed_percentage=80.0
+            ... )
+        """
+        from opendrive_utils import OpenDriveMap, SpawnHelper
+
+        od_map = OpenDriveMap(self._world)
+        spawn_helper = SpawnHelper(od_map)
+        transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
+
+        return self.spawn_vehicle(
+            blueprint_name, transform, auto_register, **register_kwargs
+        )
+
+    def destroy_vehicle(self, vehicle_id: int) -> bool:
+        """
+        車両を破棄
+
+        Args:
+            vehicle_id: 車両ID
+
+        Returns:
+            成功したらTrue
+        """
+        vehicle = self.get_vehicle(vehicle_id)
+        if vehicle:
+            vehicle.destroy()
+            # 内部管理から削除
+            if vehicle_id in self.tm_wrapper.vehicles:
+                del self.tm_wrapper.vehicles[vehicle_id]
+            if vehicle_id in self.tm_wrapper.vehicle_configs:
+                del self.tm_wrapper.vehicle_configs[vehicle_id]
+            return True
+        return False
 
     # ========================================
     # 車両登録・管理
@@ -754,7 +873,7 @@ class AgentController:
                     print(f"⚠ Error in tick callback at frame {frame}: {e}")
 
             # World更新
-            self.world.tick()
+            self._world.tick()
 
             # 進捗表示（100フレームごと）
             if frame > 0 and frame % 100 == 0:
@@ -770,7 +889,7 @@ class AgentController:
             frames: 更新するフレーム数
         """
         for _ in range(frames):
-            self.world.tick()
+            self._world.tick()
             self._current_frame += 1
 
     # ========================================
@@ -895,7 +1014,7 @@ class AgentController:
 
         # 同期モード設定を元に戻す
         if self.synchronous_mode:
-            self.world.apply_settings(self._original_settings)
+            self._world.apply_settings(self._original_settings)
 
     # ========================================
     # コンテキストマネージャ

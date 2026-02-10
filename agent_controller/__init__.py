@@ -15,14 +15,20 @@ agent_controller - CARLA Traffic Manager Wrapper Package
 
 推奨される使い方（トリガー関数ベース）:
     >>> from agent_controller import AgentController
+    >>> from opendrive_utils import LaneCoord
     >>> with AgentController(scenario_uuid="my-scenario") as controller:
-    ...     ego_id = controller.register_vehicle(vehicle)
+    ...     # 車両をスポーン（自動登録）
+    ...     lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+    ...     vehicle, ego_id = controller.spawn_vehicle_from_lane(
+    ...         "vehicle.tesla.model3", lane_coord, speed_percentage=80.0
+    ...     )
     ...     # トリガー関数でシナリオを定義（フレーム管理不要！）
     ...     controller.register_callback(
     ...         controller.when_timestep_equals(100),
     ...         lambda: controller.lane_change(ego_id, direction="left")
     ...     )
     ...     controller.run_simulation(total_frames=500)
+    ...     controller.destroy_vehicle(ego_id)
     # 自動的にworld.tick()、ログ保存、クリーンアップが実行される
 """
 

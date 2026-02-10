@@ -34,15 +34,23 @@ agent_controller/
 
 ```python
 from agent_controller import AgentController
-from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
+from opendrive_utils import LaneCoord
 
 with AgentController(scenario_uuid="my_scenario") as controller:
-    world = controller.world
+    # 車両をスポーン（自動登録）
+    lane_coord_1 = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+    ego_vehicle, ego_id = controller.spawn_vehicle_from_lane(
+        "vehicle.tesla.model3",
+        lane_coord_1,
+        speed_percentage=80.0,
+    )
 
-    # 車両をスポーン・登録
-    vehicle = world.spawn_actor(blueprint, transform)
-    ego_id = controller.register_vehicle(vehicle)
-    npc_id = controller.register_vehicle(npc_vehicle)
+    lane_coord_2 = LaneCoord(road_id=10, lane_id=-1, s=80.0)
+    npc_vehicle, npc_id = controller.spawn_vehicle_from_lane(
+        "vehicle.tesla.model3",
+        lane_coord_2,
+        speed_percentage=60.0,
+    )
 
     # トリガー関数でシナリオを定義（フレーム管理不要！）
     controller.register_callback(
@@ -76,7 +84,8 @@ with AgentController(scenario_uuid="my_scenario") as controller:
     controller.run_simulation(total_frames=600)
 
     # 車両を破棄
-    vehicle.destroy()
+    controller.destroy_vehicle(ego_id)
+    controller.destroy_vehicle(npc_id)
 ```
 
 ### パターン2: on_tickコールバック🆕
@@ -215,9 +224,40 @@ if not controller.check_connection():
         print("✓ Reconnected successfully")
 ```
 
+#### 車両スポーンとブループリント（🆕）
+
+- `get_blueprint_library() -> carla.BlueprintLibrary` - ブループリントライブラリを取得
+- `get_map() -> carla.Map` - CARLAマップを取得
+- `spawn_vehicle(blueprint_name, transform, auto_register, **kwargs) -> (Vehicle, int)` - 車両をスポーン
+- `spawn_vehicle_from_lane(blueprint_name, lane_coord, auto_register, **kwargs) -> (Vehicle, int)` - レーン座標から車両をスポーン
+- `destroy_vehicle(vehicle_id) -> bool` - 車両を破棄
+
+```python
+# レーン座標から車両をスポーン（推奨）
+from opendrive_utils import LaneCoord
+lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+vehicle, vehicle_id = controller.spawn_vehicle_from_lane(
+    "vehicle.tesla.model3",
+    lane_coord,
+    auto_register=True,  # 自動的にTraffic Managerに登録
+    speed_percentage=80.0
+)
+
+# Transform指定で車両をスポーン
+vehicle, vehicle_id = controller.spawn_vehicle(
+    "vehicle.tesla.model3",
+    transform,
+    auto_register=True,
+    speed_percentage=80.0
+)
+
+# 車両を破棄
+controller.destroy_vehicle(vehicle_id)
+```
+
 #### 車両登録・管理メソッド
 
-- `register_vehicle(vehicle, **config) -> int` - 車両を登録
+- `register_vehicle(vehicle, **config) -> int` - 車両を登録（低レベルAPI）
 - `get_vehicle(vehicle_id) -> carla.Vehicle` - 車両アクターを取得
 - `get_vehicle_config(vehicle_id) -> Dict` - 車両設定を取得
 - `get_all_vehicles() -> list[int]` - 登録されているすべての車両IDを取得

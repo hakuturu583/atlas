@@ -846,19 +846,20 @@ from agent_controller import AgentController
 from opendrive_utils import OpenDriveMap, SpawnHelper, LaneCoord
 
 with AgentController(scenario_uuid="my_scenario") as controller:
-    world = controller.world
+    # 車両をスポーン（自動登録）
+    lane_coord_1 = LaneCoord(road_id=10, lane_id=-1, s=50.0)
+    ego_vehicle, ego_id = controller.spawn_vehicle_from_lane(
+        "vehicle.tesla.model3",
+        lane_coord_1,
+        speed_percentage=80.0,
+    )
 
-    # 車両をスポーン・登録
-    blueprint = world.get_blueprint_library().find('vehicle.tesla.model3')
-    od_map = OpenDriveMap(world)
-    spawn_helper = SpawnHelper(od_map)
-
-    lane_coord = LaneCoord(road_id=10, lane_id=-1, s=50.0)
-    transform = spawn_helper.get_spawn_transform_from_lane(lane_coord)
-    vehicle = world.spawn_actor(blueprint, transform)
-
-    ego_id = controller.register_vehicle(vehicle)
-    npc_id = controller.register_vehicle(npc_vehicle)
+    lane_coord_2 = LaneCoord(road_id=10, lane_id=-1, s=80.0)
+    npc_vehicle, npc_id = controller.spawn_vehicle_from_lane(
+        "vehicle.tesla.model3",
+        lane_coord_2,
+        speed_percentage=60.0,
+    )
 
     # トリガー関数でシナリオを定義（フレーム管理不要！）
     controller.register_callback(
@@ -892,7 +893,8 @@ with AgentController(scenario_uuid="my_scenario") as controller:
     controller.run_simulation(total_frames=600)
 
     # 車両を破棄
-    vehicle.destroy()
+    controller.destroy_vehicle(ego_id)
+    controller.destroy_vehicle(npc_id)
 
 # コンテキストマネージャを抜けると自動的に:
 # - ログがファイナライズ・保存される
