@@ -6,15 +6,24 @@ VLAモデルをDockerコンテナで実行するための設定
 
 ```
 docker/
-├── Dockerfile.base        # 共通ベースイメージ
-├── Dockerfile.dummy       # ダミーVLAモデル用
-├── Dockerfile.alpamayo    # Alpamayo-R1-10B用
+├── Dockerfile.base        # 共通ベースイメージ（自動生成）
+├── Dockerfile.dummy       # ダミーVLAモデル用（自動生成）
+├── Dockerfile.alpamayo    # Alpamayo-R1-10B用（自動生成）
 ├── docker-compose.yml     # Docker Compose設定
-├── requirements-base.txt  # 共通依存関係
-├── requirements-alpamayo.txt  # Alpamayo依存関係
 ├── build.sh               # ビルドスクリプト
 └── README.md              # このファイル
+
+configs/vla/
+├── base.yaml              # 共通Docker設定
+├── dummy.yaml             # ダミーモデル設定
+└── alpamayo.yaml          # Alpamayoモデル設定
+
+templates/
+└── Dockerfile.jinja2      # Dockerfileテンプレート
 ```
+
+**注意**: Dockerfile.* は `scripts/generate_dockerfiles.py` により自動生成されます。
+手動で編集せず、`configs/vla/*.yaml` を編集してください。
 
 ## クイックスタート
 
@@ -112,13 +121,10 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-runtime-ubuntu22.04 nvidia-smi
 
 ### 独自VLAモデルの追加
 
-1. `ad_stack/models/my_model.py`を作成
-2. `VLAModelBase`を継承
-3. `initialize()`, `predict()`を実装
-4. `Dockerfile.mymodel`を作成
-5. `docker-compose.yml`にサービス追加
+テンプレートシステムを使用して新しいVLAモデルを追加できます。
 
-例:
+**Step 1**: モデル実装を作成
+
 ```python
 # ad_stack/models/my_model.py
 from .base import VLAModelBase
@@ -135,4 +141,63 @@ class MyVLAModel(VLAModelBase):
     def predict(self, sensor_bundle):
         # 推論処理
         return vla_output
+```
+
+**Step 2**: Hydra設定ファイルを作成
+
+```yaml
+# configs/vla/my_model.yaml
+defaults:
+  - base
+  - _self_
+
+name: my_model
+
+# カスタムベースイメージ（必要な場合）
+# base_image: python:3.10-slim
+
+# 追加の依存関係
+dependencies:
+  custom:
+    - my-package>=1.0.0
+
+# ファイルコピー
+copy_paths:
+  - src: ad_stack/models/my_model.py
+    dst: /app/ad_stack/models/my_model.py
+
+# 環境変数
+environment:
+  VLA_MODEL: my_model
+```
+
+**Step 3**: Dockerfileを生成
+
+```bash
+uv run python scripts/generate_dockerfiles.py
+```
+
+**Step 4**: docker-compose.ymlにサービス追加
+
+```yaml
+services:
+  vla-mymodel:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.my_model
+    image: atlas-vla-mymodel:latest
+    container_name: atlas-vla-mymodel
+    ports:
+      - "50053:50051"
+    environment:
+      - VLA_MODEL=my_model
+    networks:
+      - atlas-network
+```
+
+**Step 5**: ビルド・実行
+
+```bash
+docker build -t atlas-vla-mymodel:latest -f docker/Dockerfile.my_model .
+docker-compose up vla-mymodel
 ```
