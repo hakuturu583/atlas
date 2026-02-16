@@ -65,6 +65,11 @@ scenarios/*.py
 # Generated gRPC code
 generated/
 
+# Docker auto-generated Dockerfiles
+docker/Dockerfile.base
+docker/Dockerfile.dummy
+docker/Dockerfile.alpamayo
+
 # Ansible
 .ansible/
 *.retry
