@@ -42,11 +42,17 @@ message HealthCheckResponse {
     UNKNOWN = 0;
     SERVING = 1;
     NOT_SERVING = 2;
+    INITIALIZING = 3;              // 初期化中
   }
   ServingStatus status = 1;
-  string version = 2;               // AD Stackバージョン
+  string version = 2;               // VLA Stackバージョン
   string model_name = 3;            // 使用モデル名（例: "Alpamayo-R1-10B"）
   map<string, string> metadata = 4; // 追加情報
+
+  // 初期化進捗（INITIALIZING時のみ有効）
+  float initialization_progress = 10; // 0.0 ~ 1.0
+  string initialization_stage = 11;   // "downloading_weights", "loading_model", "compiling", "ready"
+  string initialization_message = 12; // 詳細メッセージ
 }
 
 // リセットリクエスト

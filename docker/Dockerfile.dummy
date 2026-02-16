@@ -1,0 +1,15 @@
+# ========================================
+# ダミーVLAモデル用イメージ
+# 共通ベースイメージ + ダミー実装
+# ========================================
+FROM atlas-vla-base:latest
+
+# ダミーモデル実装をコピー
+COPY ad_stack/models/dummy.py /app/ad_stack/models/
+COPY ad_stack/server.py /app/ad_stack/
+
+# 環境変数
+ENV VLA_MODEL=dummy
+ENV VLA_PORT=50051
+
+CMD ["python", "-m", "ad_stack.server"]

@@ -1,0 +1,40 @@
+# ========================================
+# 共通ベースイメージ
+# gRPC通信コードと依存関係を含む
+# ========================================
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# システム依存関係
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python依存関係（共通）
+COPY docker/requirements-base.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements-base.txt
+
+# gRPC生成コードをコピー
+COPY generated/grpc_pb2 /app/generated/grpc_pb2
+
+# ad_stack共通コードをコピー
+COPY ad_stack/common /app/ad_stack/common
+COPY ad_stack/models/base.py /app/ad_stack/models/base.py
+RUN touch /app/ad_stack/__init__.py
+RUN touch /app/ad_stack/models/__init__.py
+RUN touch /app/ad_stack/common/__init__.py
+
+# gRPCヘルスプローブ
+RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
+    wget -qO/bin/grpc_health_probe \
+    https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
+    chmod +x /bin/grpc_health_probe
+
+ENV PYTHONPATH=/app
+
+EXPOSE 50051
+
+# デフォルトコマンド（子イメージでオーバーライド）
+CMD ["python", "-m", "ad_stack.server"]

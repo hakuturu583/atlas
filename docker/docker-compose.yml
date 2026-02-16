@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  # ダミーVLAサービス（開発・テスト用）
+  vla-dummy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dummy
+    image: atlas-vla-dummy:latest
+    container_name: atlas-vla-dummy
+    ports:
+      - "50051:50051"
+    environment:
+      - VLA_MODEL=dummy
+      - VLA_PORT=50051
+      - VLA_MAX_WORKERS=10
+    networks:
+      - atlas-network
+    healthcheck:
+      test: ["CMD", "/bin/grpc_health_probe", "-addr=:50051"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Alpamayo-R1-10B VLAサービス（本番用）
+  vla-alpamayo:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.alpamayo
+    image: atlas-vla-alpamayo:latest
+    container_name: atlas-vla-alpamayo
+    ports:
+      - "50052:50051"  # 別ポートで起動
+    environment:
+      - VLA_MODEL=alpamayo
+      - VLA_PORT=50051
+      - VLA_MAX_WORKERS=10
+      - HF_HOME=/app/.cache/huggingface
+    volumes:
+      - huggingface-cache:/app/.cache/huggingface
+    networks:
+      - atlas-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "/bin/grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - alpamayo  # デフォルトでは起動しない（docker-compose --profile alpamayo up）
+
+networks:
+  atlas-network:
+    driver: bridge
+
+volumes:
+  huggingface-cache:
+    driver: local

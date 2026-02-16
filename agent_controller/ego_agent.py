@@ -116,6 +116,12 @@ class EgoAgent:
         # センサーをアタッチ
         self._attach_sensors()
 
+        # VLAサービスの初期化を待機
+        if not self._wait_for_vla_initialization(timeout=300.0):
+            logger.warning(
+                f"VLA service initialization timeout. Agent may not work correctly."
+            )
+
         logger.info(
             f"EgoAgent '{agent_id}' initialized with {len(self.sensors)} sensors"
         )
@@ -157,6 +163,55 @@ class EgoAgent:
 
             except Exception as e:
                 logger.error(f"Failed to attach sensor {sensor_def.sensor_id}: {e}")
+
+    def _wait_for_vla_initialization(self, timeout: float = 300.0) -> bool:
+        """
+        VLAサービスの初期化完了を待つ
+
+        Args:
+            timeout: タイムアウト時間（秒）
+
+        Returns:
+            bool: 初期化が完了した場合True
+        """
+        logger.info(f"Waiting for VLA service initialization (timeout: {timeout}s)...")
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                health_request = ad_stack_pb2.HealthCheckRequest(
+                    service_name="VLAService"
+                )
+                health_response = self.stub.HealthCheck(
+                    health_request, timeout=5.0
+                )
+
+                if health_response.status == ad_stack_pb2.HealthCheckResponse.SERVING:
+                    logger.info("✓ VLA service is ready")
+                    return True
+                elif health_response.status == ad_stack_pb2.HealthCheckResponse.INITIALIZING:
+                    progress = health_response.initialization_progress * 100
+                    stage = health_response.initialization_stage
+                    message = health_response.initialization_message
+                    logger.info(
+                        f"  Initializing... {progress:.1f}% ({stage}: {message})"
+                    )
+                    time.sleep(2.0)
+                else:
+                    logger.warning(
+                        f"VLA service status: {health_response.status}"
+                    )
+                    time.sleep(2.0)
+
+            except grpc.RpcError as e:
+                logger.debug(f"VLA service not ready yet: {e.code()}")
+                time.sleep(2.0)
+            except Exception as e:
+                logger.warning(f"Health check error: {e}")
+                time.sleep(2.0)
+
+        logger.error(f"VLA service initialization timeout ({timeout}s)")
+        return False
 
     def _on_sensor_data(self, sensor_id: str, data: carla.SensorData):
         """センサーデータの受信コールバック"""

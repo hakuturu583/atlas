@@ -1,0 +1,52 @@
+# ========================================
+# Alpamayo-R1-10B用イメージ
+# 共通ベースイメージ + Alpamayo実装 + ML依存関係
+# ========================================
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS base
+
+WORKDIR /app
+
+# Python 3.10インストール
+RUN apt-get update && apt-get install -y \
+    python3.10 python3-pip \
+    wget curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python依存関係（共通）
+COPY docker/requirements-base.txt /tmp/
+RUN pip3 install --no-cache-dir -r /tmp/requirements-base.txt
+
+# ML依存関係（Alpamayo用）
+COPY docker/requirements-alpamayo.txt /tmp/
+RUN pip3 install --no-cache-dir -r /tmp/requirements-alpamayo.txt
+
+# gRPC生成コードをコピー
+COPY generated/grpc_pb2 /app/generated/grpc_pb2
+
+# ad_stack共通コードをコピー
+COPY ad_stack/common /app/ad_stack/common
+COPY ad_stack/models/base.py /app/ad_stack/models/base.py
+RUN touch /app/ad_stack/__init__.py
+RUN touch /app/ad_stack/models/__init__.py
+RUN touch /app/ad_stack/common/__init__.py
+
+# Alpamayoモデル実装をコピー
+COPY ad_stack/models/alpamayo.py /app/ad_stack/models/
+COPY ad_stack/server.py /app/ad_stack/
+
+# gRPCヘルスプローブ
+RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
+    wget -qO/bin/grpc_health_probe \
+    https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
+    chmod +x /bin/grpc_health_probe
+
+ENV PYTHONPATH=/app
+ENV HF_HOME=/app/.cache/huggingface
+
+# 環境変数
+ENV VLA_MODEL=alpamayo
+ENV VLA_PORT=50051
+
+EXPOSE 50051
+
+CMD ["python3", "-m", "ad_stack.server"]
