@@ -52,35 +52,28 @@ class AlpamayoR1Model(VLAModelBase):
 
             # HuggingFace transformersライブラリをインポート
             try:
-                from transformers import AutoModelForCausalLM, AutoProcessor
+                from transformers import AlpamayoR1
             except ImportError:
-                logger.error("transformers library not installed")
-                self.initialization_status.message = "Error: transformers not installed"
+                logger.error("transformers library not installed or AlpamayoR1 not available")
+                self.initialization_status.message = "Error: transformers not installed or AlpamayoR1 not available"
                 return False
 
             # モデルのダウンロード（時間がかかる可能性あり）
             logger.info(f"Loading model: {self.model_id}")
             self.initialization_status.progress = 0.3
-            self.initialization_status.message = "Loading model from HuggingFace..."
+            self.initialization_status.message = "Loading AlpamayoR1 model from HuggingFace..."
 
-            # NOTE: 実際のAlpamayo-R1-10Bのロード方法は公式ドキュメントに従う
-            # ここではプレースホルダー実装
+            # Load model using AlpamayoR1 class
             try:
-                self.model = AutoModelForCausalLM.from_pretrained(
+                self.model = AlpamayoR1.from_pretrained(
                     self.model_id,
-                    device_map="auto" if self.device == "cuda" else self.device,
-                    torch_dtype="auto",
-                    trust_remote_code=True,
-                    cache_dir=os.getenv("HF_HOME", "/app/.cache/huggingface"),
+                    dtype="auto"
                 )
                 self.initialization_status.progress = 0.7
-                self.initialization_status.message = "Loading processor..."
+                self.initialization_status.message = "Model loaded successfully"
 
-                self.processor = AutoProcessor.from_pretrained(
-                    self.model_id,
-                    trust_remote_code=True,
-                    cache_dir=os.getenv("HF_HOME", "/app/.cache/huggingface"),
-                )
+                # AlpamayoR1 may include processor as part of the model
+                self.processor = self.model
             except Exception as e:
                 logger.error(f"Failed to load model: {e}")
                 self.initialization_status.message = f"Error loading model: {e}"
