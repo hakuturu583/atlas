@@ -1,0 +1,161 @@
+version: "3.8"
+
+services:
+  # CARLAシミュレーターサーバー
+  carla:
+    image: carlasim/carla:0.9.15
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    networks:
+      - atlas-network
+    ports:
+      - "2000:2000"
+      - "2001:2001"
+      - "2002:2002"
+    environment:
+      - DISPLAY=${DISPLAY:-}
+    command: >
+      bash -c "
+      /home/carla/CarlaUE4.sh
+      -RenderOffScreen
+      -carla-rpc-port=2000
+      -quality-level=Low
+      "
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/2000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # VLAモデルサービス（ダミー）
+  ad-stack-dummy:
+    image: localhost:5000/atlas-vla-dummy:latest
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    networks:
+      - atlas-network
+    ports:
+      - "50051:50051"
+    environment:
+      - VLA_MODEL=dummy
+      - VLA_PORT=50051
+      - VLA_MAX_WORKERS=10
+    healthcheck:
+      test: ["CMD", "/bin/grpc_health_probe", "-addr=:50051"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # VLAモデルサービス（Alpamayo）
+  ad-stack-alpamayo:
+    image: localhost:5000/atlas-vla-alpamayo:latest
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "8"
+          memory: 16G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      placement:
+        constraints:
+          - node.labels.gpu==true
+    networks:
+      - atlas-network
+    ports:
+      - "50052:50051"
+    environment:
+      - VLA_MODEL=alpamayo
+      - VLA_PORT=50051
+      - VLA_MAX_WORKERS=10
+      - HF_HOME=/app/.cache/huggingface
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - huggingface-cache:/app/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "/bin/grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 300s  # モデルのダウンロード・初期化に時間がかかるため
+
+  # シナリオ実行コンテナ
+  scenario:
+    image: localhost:5000/atlas-scenario:latest
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    networks:
+      - atlas-network
+    environment:
+      - CARLA_HOST=carla
+      - CARLA_PORT=2000
+      - AD_STACK_HOST=ad-stack-dummy
+      - AD_STACK_PORT=50051
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - scenario-logs:/app/data/logs
+      - scenario-videos:/app/data/videos
+      - scenario-rerun:/app/data/rerun
+    depends_on:
+      - carla
+      - ad-stack-dummy
+    command: >
+      bash -c "
+      echo 'Waiting for CARLA and AD Stack...';
+      sleep 30;
+      echo 'Starting scenario execution...';
+      tail -f /dev/null
+      "
+
+networks:
+  atlas-network:
+    driver: overlay
+    attachable: true
+
+volumes:
+  huggingface-cache:
+    driver: local
+  scenario-logs:
+    driver: local
+  scenario-videos:
+    driver: local
+  scenario-rerun:
+    driver: local

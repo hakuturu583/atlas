@@ -1,0 +1,56 @@
+# ========================================
+# Scenario Execution Container
+# Runs ATLAS scenarios with CARLA Python API
+# ========================================
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# システムパッケージのインストール
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    libpng16-16 \
+    libjpeg-turbo8 \
+    libtiff5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python依存関係のインストール
+COPY pyproject.toml /app/
+RUN pip install --no-cache-dir \
+    carla==0.9.15 \
+    numpy \
+    imageio \
+    imageio-ffmpeg \
+    opencv-python-headless \
+    grpcio>=1.60.0 \
+    protobuf>=4.25.0 \
+    rerun-sdk \
+    && rm -rf /root/.cache/pip
+
+# プロジェクトファイルのコピー
+COPY generated/grpc_pb2 /app/generated/grpc_pb2
+COPY agent_controller /app/agent_controller
+COPY opendrive_utils /app/opendrive_utils
+COPY scenarios /app/scenarios
+COPY examples /app/examples
+
+# データディレクトリの作成
+RUN mkdir -p /app/data/logs/stamp \
+    /app/data/logs/commands \
+    /app/data/logs/metrics \
+    /app/data/videos \
+    /app/data/rerun
+
+# 環境変数の設定
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV CARLA_HOST=carla
+ENV CARLA_PORT=2000
+ENV AD_STACK_HOST=ad-stack-dummy
+ENV AD_STACK_PORT=50051
+
+# デフォルトコマンド（オーバーライド可能）
+CMD ["python", "-c", "print('Scenario container ready. Use docker exec to run scenarios.')"]
