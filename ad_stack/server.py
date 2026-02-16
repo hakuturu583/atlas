@@ -14,12 +14,10 @@ import sys
 import signal
 import threading
 
-# ad_stackをインポートパスに追加
-sys.path.insert(0, os.path.dirname(__file__))
-
-from common.grpc_server import serve
-from models.dummy import DummyVLAModel
-from models.alpamayo import AlpamayoR1Model
+# 絶対インポートを使用（python -m ad_stack.server で実行するため）
+from ad_stack.common.grpc_server import serve
+from ad_stack.models.dummy import DummyVLAModel
+from ad_stack.models.alpamayo import AlpamayoR1Model
 
 logging.basicConfig(
     level=logging.INFO,

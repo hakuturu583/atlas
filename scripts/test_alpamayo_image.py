@@ -32,9 +32,44 @@ class AlpamayoImageTester:
         self.container_name = "test-alpamayo-r1"
         self.port = 50051
 
+    def download_model(self) -> bool:
+        """HuggingFaceからモデルをダウンロード"""
+        print("=" * 60)
+        print("Step 0: Downloading Alpamayo-R1-10B model...")
+        print("=" * 60)
+
+        # HF_HOMEを確認
+        hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+        model_path = os.path.join(hf_home, "hub", "models--nvidia--Alpamayo-R1-10B")
+
+        # モデルが既にダウンロード済みかチェック
+        if os.path.exists(model_path):
+            print(f"✓ Model already downloaded: {model_path}")
+            return True
+
+        print(f"  Downloading to: {hf_home}")
+        print("  This may take several minutes (10B model)...")
+
+        cmd = [
+            "huggingface-cli", "download",
+            "nvidia/Alpamayo-R1-10B",
+            "--cache-dir", hf_home
+        ]
+
+        try:
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            print("✓ Model downloaded successfully")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to download model: {e}")
+            print(f"stderr: {e.stderr}")
+            print("\nNote: You may need to install huggingface-cli:")
+            print("  pip install huggingface-hub[cli]")
+            return False
+
     def build_image(self) -> bool:
         """Dockerイメージをビルド"""
-        print("=" * 60)
+        print("\n" + "=" * 60)
         print("Step 1: Building Docker image...")
         print("=" * 60)
 
@@ -66,13 +101,19 @@ class AlpamayoImageTester:
             capture_output=True
         )
 
+        # HF_HOMEをホストからマウント
+        hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+        print(f"  Mounting HuggingFace cache: {hf_home}")
+
         cmd = [
             "docker", "run",
             "-d",
             "--name", self.container_name,
             "-p", f"{self.port}:{self.port}",
+            "-v", f"{hf_home}:/app/.cache/huggingface",  # 読み書き可能にする
             "-e", "VLA_MODEL=alpamayo",
             "-e", "VLA_PORT=50051",
+            "-e", "HF_HOME=/app/.cache/huggingface",
             self.image_name
         ]
 
@@ -85,7 +126,7 @@ class AlpamayoImageTester:
             print(f"❌ Failed to start container: {e}")
             return False
 
-    def wait_for_ready(self, timeout: int = 60) -> bool:
+    def wait_for_ready(self, timeout: int = 300) -> bool:
         """コンテナが準備完了するまで待機"""
         print("\n" + "=" * 60)
         print("Step 3: Waiting for container to be ready...")
@@ -104,24 +145,56 @@ class AlpamayoImageTester:
 
                 logs = result.stdout + result.stderr
 
-                if "Server started" in logs or "Listening on" in logs:
-                    print("✓ Container is ready")
+                # 初期化メッセージをチェック
+                if "Model initialization completed" in logs or "✓ Model initialization completed" in logs:
+                    print("✓ Container is ready (model initialized)")
                     return True
 
-                # エラーチェック
-                if "Error" in logs or "Failed" in logs:
+                # サーバー起動メッセージをチェック
+                if "Server started" in logs or "Listening on" in logs or "VLA gRPC Server Starting" in logs:
+                    print("✓ Container is ready (server started)")
+                    # モデル初期化完了を待つ
+                    if "Model initialization completed" in logs or "✓ Model initialization completed" in logs:
+                        return True
+                    # サーバーは起動しているが、まだモデル初期化中
+                    if "Initializing model" in logs or "Loading model" in logs:
+                        print(f"  Model loading in progress... ({int(time.time() - start_time)}s)")
+                        time.sleep(5)
+                        continue
+
+                # エラーチェック（ただし、モデルダウンロード中の進捗メッセージは除外）
+                if ("Error" in logs or "Traceback" in logs) and "Fetching" not in logs:
                     print(f"❌ Container error detected:")
-                    print(logs[-500:])  # 最後の500文字を表示
+                    print(logs[-1000:])  # 最後の1000文字を表示
                     return False
 
-                print(f"  Waiting... ({int(time.time() - start_time)}s)")
+                # 進捗状況を表示
+                elapsed = int(time.time() - start_time)
+                if elapsed % 10 == 0:  # 10秒ごとに最新のログを表示
+                    recent_logs = logs.split('\n')[-5:]  # 最後の5行
+                    print(f"  Waiting... ({elapsed}s)")
+                    for line in recent_logs:
+                        if line.strip():
+                            print(f"    {line[:100]}")  # 最初の100文字のみ
+                else:
+                    print(f"  Waiting... ({elapsed}s)")
+
                 time.sleep(5)
 
             except Exception as e:
                 print(f"❌ Error checking logs: {e}")
                 return False
 
+        # タイムアウト時にログを表示
         print(f"❌ Timeout waiting for container to be ready")
+        result = subprocess.run(
+            ["docker", "logs", self.container_name],
+            capture_output=True,
+            text=True
+        )
+        logs = result.stdout + result.stderr
+        print("\nFinal logs (last 2000 chars):")
+        print(logs[-2000:])
         return False
 
     def test_grpc_connection(self) -> bool:
@@ -229,6 +302,11 @@ class AlpamayoImageTester:
         print()
 
         try:
+            # Step 0: Download model
+            if not self.download_model():
+                print("\n⚠ Model download failed, but continuing with test...")
+                print("  Container will download model at runtime (slower)")
+
             # Step 1: Build
             if not self.build_image():
                 return False
