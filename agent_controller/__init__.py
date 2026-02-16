@@ -50,6 +50,7 @@ from .sensor_config import (
     SINGLE_CAMERA,
     LIDAR_CAMERA,
 )
+from .ego_agent import EgoAgent, EgoAgentMetrics
 
 # 低レベルAPI（上級ユーザー向け）
 from .traffic_manager_wrapper import TrafficManagerWrapper
@@ -70,6 +71,8 @@ __all__ = [
     "VehicleConfig",
     "SensorConfig",
     "SensorDefinition",
+    "EgoAgent",
+    "EgoAgentMetrics",
     # 車両プリセット
     "AGGRESSIVE_DRIVER",
     "CAUTIOUS_DRIVER",

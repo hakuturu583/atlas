@@ -434,6 +434,61 @@ class AgentController:
         return False
 
     # ========================================
+    # EgoAgent管理
+    # ========================================
+
+    def spawn_ego_vehicle_from_lane(
+        self,
+        blueprint_name: str,
+        lane_coord: any,  # TYPE: LaneCoord
+        sensor_config: any,  # TYPE: SensorConfig
+        grpc_host: str = "localhost",
+        grpc_port: int = 50051,
+        controller_type: str = "pure_pursuit",
+        auto_destroy: bool = True,
+    ) -> Tuple[carla.Vehicle, int, any]:  # Returns: (vehicle, vehicle_id, ego_agent)
+        """
+        EgoAgent制御の車両をスポーン
+
+        Args:
+            blueprint_name: 車両Blueprint名
+            lane_coord: レーン座標（LaneCoord）
+            sensor_config: センサー構成（SensorConfig）
+            grpc_host: VLAサービスのホスト
+            grpc_port: VLAサービスのポート
+            controller_type: コントローラータイプ
+            auto_destroy: 自動破棄を有効化
+
+        Returns:
+            (vehicle, vehicle_id, ego_agent): 車両、車両ID、EgoAgent
+        """
+        from .ego_agent import EgoAgent
+
+        # 車両をスポーン（Traffic Manager登録なし）
+        vehicle, vehicle_id = self.spawn_vehicle_from_lane(
+            blueprint_name,
+            lane_coord,
+            auto_register=False,  # Traffic Managerには登録しない
+            auto_destroy=auto_destroy,
+        )
+
+        # EgoAgentを作成
+        ego_agent = EgoAgent(
+            vehicle=vehicle,
+            agent_id=f"ego_{vehicle_id}",
+            sensor_config=sensor_config,
+            grpc_host=grpc_host,
+            grpc_port=grpc_port,
+            stamp_logger=self.stamp_logger,
+            controller_type=controller_type,
+        )
+
+        # TrafficManagerWrapperに登録
+        self.tm_wrapper.add_ego_agent(ego_agent)
+
+        return vehicle, vehicle_id, ego_agent
+
+    # ========================================
     # 車両登録・管理
     # ========================================
 
@@ -955,6 +1010,11 @@ class AgentController:
                         self.metrics.update(frame, timestamp, vehicle, self._world)
                     except Exception as e:
                         print(f"⚠ Error updating metrics for vehicle {vehicle.id}: {e}")
+
+            # EgoAgentの処理
+            snapshot = self._world.get_snapshot()
+            timestamp = snapshot.timestamp.elapsed_seconds
+            self.tm_wrapper.process_ego_agents(frame, timestamp)
 
             # World更新
             self._world.tick()

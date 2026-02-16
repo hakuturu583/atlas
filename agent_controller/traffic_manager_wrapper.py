@@ -46,6 +46,9 @@ class TrafficManagerWrapper:
         self.vehicles: Dict[int, carla.Vehicle] = {}
         self.vehicle_configs: Dict[int, Dict[str, Any]] = {}
 
+        # EgoAgent管理
+        self.ego_agents: List[Any] = []  # TYPE: List[EgoAgent] (循環参照回避)
+
         # デフォルト設定
         self.tm.set_global_distance_to_leading_vehicle(2.5)
         self.tm.set_respawn_dormant_vehicles(False)
@@ -307,10 +310,47 @@ class TrafficManagerWrapper:
         """登録されているすべての車両IDを取得"""
         return list(self.vehicles.keys())
 
+    def add_ego_agent(self, ego_agent: Any) -> None:
+        """
+        EgoAgentを追加
+
+        Args:
+            ego_agent: EgoAgentインスタンス
+        """
+        self.ego_agents.append(ego_agent)
+
+    def process_ego_agents(self, frame: int, timestamp: float) -> None:
+        """
+        すべてのEgoAgentの処理を実行
+
+        Args:
+            frame: 現在のフレーム番号
+            timestamp: タイムスタンプ（秒）
+        """
+        for ego_agent in self.ego_agents:
+            try:
+                ego_agent.process_frame(frame, timestamp)
+            except Exception as e:
+                # エラーログは EgoAgent 内で記録されるため、ここでは継続
+                pass
+
+    def get_ego_agents_metrics(self) -> List[Dict[str, Any]]:
+        """すべてのEgoAgentのメトリクスを取得"""
+        return [agent.get_metrics() for agent in self.ego_agents]
+
     def cleanup(self) -> None:
         """クリーンアップ"""
+        # EgoAgentのクリーンアップ
+        for ego_agent in self.ego_agents:
+            try:
+                ego_agent.cleanup()
+            except Exception as e:
+                pass
+
+        # Traffic Manager管理車両のクリーンアップ
         for vehicle in self.vehicles.values():
             if vehicle.is_alive:
                 vehicle.set_autopilot(False)
         self.vehicles.clear()
         self.vehicle_configs.clear()
+        self.ego_agents.clear()
