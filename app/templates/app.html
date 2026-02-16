@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <link rel="stylesheet" href="/static/css/xterm.css">
     <style>
         body, html {
@@ -432,9 +433,17 @@
         <div class="right-pane">
             <div class="pane-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <span>🤖 Claude Code Terminal</span>
-                <button id="settings-btn" class="settings-button">
-                    ⚙️ 設定
-                </button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button id="cluster-setup-btn" class="settings-button"
+                            hx-get="/views/cluster_setup"
+                            hx-target="#content-fiftyone"
+                            hx-swap="innerHTML">
+                        🌐 クラスタ設定
+                    </button>
+                    <button id="settings-btn" class="settings-button">
+                        ⚙️ CARLA設定
+                    </button>
+                </div>
             </div>
             <div class="terminal-container">
                 <div id="terminal"></div>

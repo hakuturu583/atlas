@@ -1,0 +1,448 @@
+<!-- Cluster Setup View -->
+<div class="p-6">
+  <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">
+    クラスタセットアップ
+  </h1>
+
+  <!-- System Architecture Diagram -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
+    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+      システム構成図
+    </h2>
+
+    <div class="flex items-center justify-center py-8">
+      <svg class="w-full max-w-4xl" viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+        <!-- Manager Node -->
+        <g>
+          <rect x="50" y="50" width="200" height="120" rx="10" fill="#3b82f6" opacity="0.1" stroke="#3b82f6" stroke-width="2"/>
+          <text x="150" y="80" text-anchor="middle" class="fill-gray-900 dark:fill-white font-bold">Manager Node</text>
+          <text x="150" y="105" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">- Docker Swarm Manager</text>
+          <text x="150" y="125" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">- Local Registry</text>
+          <text x="150" y="145" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">- ATLAS Stack</text>
+        </g>
+
+        <!-- Worker Nodes -->
+        <g>
+          <rect x="320" y="50" width="150" height="100" rx="10" fill="#10b981" opacity="0.1" stroke="#10b981" stroke-width="2"/>
+          <text x="395" y="80" text-anchor="middle" class="fill-gray-900 dark:fill-white font-bold">Worker Node 1</text>
+          <text x="395" y="105" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">- CARLA Server</text>
+          <text x="395" y="125" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">- GPU Support</text>
+        </g>
+
+        <g>
+          <rect x="500" y="50" width="150" height="100" rx="10" fill="#10b981" opacity="0.1" stroke="#10b981" stroke-width="2"/>
+          <text x="575" y="80" text-anchor="middle" class="fill-gray-900 dark:fill-white font-bold">Worker Node 2</text>
+          <text x="575" y="105" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">- VLA Models</text>
+          <text x="575" y="125" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">- GPU Support</text>
+        </g>
+
+        <!-- Connections -->
+        <line x1="250" y1="110" x2="320" y2="100" stroke="#6b7280" stroke-width="2" stroke-dasharray="5,5"/>
+        <line x1="250" y1="110" x2="500" y2="100" stroke="#6b7280" stroke-width="2" stroke-dasharray="5,5"/>
+
+        <!-- Network Label -->
+        <text x="400" y="190" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 font-semibold">Overlay Network (atlas-network)</text>
+
+        <!-- Services -->
+        <g>
+          <rect x="50" y="250" width="180" height="120" rx="8" fill="#f59e0b" opacity="0.1" stroke="#f59e0b" stroke-width="2"/>
+          <text x="140" y="275" text-anchor="middle" class="fill-gray-900 dark:fill-white font-semibold">Services</text>
+          <text x="140" y="300" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">• CARLA (Port 2000)</text>
+          <text x="140" y="320" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">• Scenario Executor</text>
+          <text x="140" y="340" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">• VLA (gRPC :50051)</text>
+          <text x="140" y="360" text-anchor="middle" class="fill-gray-600 dark:fill-gray-300 text-sm">• Registry (:5000)</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Configuration Form -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
+    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+      クラスタ設定
+    </h2>
+
+    <form id="cluster-form" class="space-y-6">
+      <!-- Cluster Name -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          クラスタ名
+        </label>
+        <input
+          type="text"
+          id="cluster-name"
+          value="atlas"
+          class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+          required
+        />
+      </div>
+
+      <!-- Manager Node -->
+      <div class="border border-blue-300 dark:border-blue-600 rounded-lg p-4">
+        <h3 class="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">
+          マネージャーノード
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              ホスト名
+            </label>
+            <input
+              type="text"
+              id="manager-hostname"
+              value="manager-node"
+              class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              required
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              IPアドレス
+            </label>
+            <input
+              type="text"
+              id="manager-ip"
+              placeholder="192.168.1.10"
+              class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              required
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              SSHユーザー
+            </label>
+            <input
+              type="text"
+              id="manager-user"
+              value="ubuntu"
+              class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              required
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              SSHポート
+            </label>
+            <input
+              type="number"
+              id="manager-port"
+              value="22"
+              class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              required
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Worker Nodes -->
+      <div class="border border-green-300 dark:border-green-600 rounded-lg p-4">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-lg font-semibold text-green-600 dark:text-green-400">
+            ワーカーノード
+          </h3>
+          <button
+            type="button"
+            onclick="addWorkerNode()"
+            class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+          >
+            + ノード追加
+          </button>
+        </div>
+        <div id="worker-nodes-container" class="space-y-4">
+          <!-- Worker nodes will be added here dynamically -->
+        </div>
+      </div>
+
+      <!-- Deployment Options -->
+      <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
+        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">
+          デプロイオプション
+        </h3>
+        <div class="space-y-2">
+          <label class="flex items-center">
+            <input type="checkbox" id="build-alpamayo" class="mr-2" />
+            <span class="text-sm text-gray-700 dark:text-gray-300">Alpamayo VLAモデルをビルド・デプロイ</span>
+          </label>
+          <label class="flex items-center">
+            <input type="checkbox" id="skip-docker" class="mr-2" />
+            <span class="text-sm text-gray-700 dark:text-gray-300">Dockerセットアップをスキップ（既にインストール済みの場合）</span>
+          </label>
+          <label class="flex items-center">
+            <input type="checkbox" id="skip-swarm" class="mr-2" />
+            <span class="text-sm text-gray-700 dark:text-gray-300">Swarm初期化をスキップ（既に初期化済みの場合）</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Deploy Button -->
+      <div class="flex justify-end space-x-4">
+        <button
+          type="button"
+          onclick="saveConfig()"
+          class="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+        >
+          設定を保存
+        </button>
+        <button
+          type="submit"
+          class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
+        >
+          デプロイ開始
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Deployment Progress -->
+  <div id="deployment-progress" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hidden">
+    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+      デプロイ進捗
+    </h2>
+
+    <div class="mb-4">
+      <div class="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+        <span id="progress-step">準備中...</span>
+        <span id="progress-percentage">0%</span>
+      </div>
+      <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+        <div
+          id="progress-bar"
+          class="bg-blue-500 h-4 rounded-full transition-all duration-500"
+          style="width: 0%"
+        ></div>
+      </div>
+    </div>
+
+    <div
+      id="deployment-logs"
+      class="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 h-96 overflow-y-auto font-mono text-sm"
+    >
+      <!-- Logs will appear here -->
+    </div>
+  </div>
+</div>
+
+<script>
+let workerNodeCount = 0;
+
+function addWorkerNode() {
+  workerNodeCount++;
+  const container = document.getElementById('worker-nodes-container');
+  const nodeHtml = `
+    <div class="worker-node border border-gray-200 dark:border-gray-700 rounded-lg p-4" data-node-id="${workerNodeCount}">
+      <div class="flex justify-between items-center mb-3">
+        <h4 class="font-semibold text-gray-700 dark:text-gray-300">Worker Node ${workerNodeCount}</h4>
+        <button
+          type="button"
+          onclick="removeWorkerNode(${workerNodeCount})"
+          class="text-red-500 hover:text-red-700"
+        >
+          削除
+        </button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            ホスト名
+          </label>
+          <input
+            type="text"
+            class="worker-hostname w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+            value="worker-node-${workerNodeCount}"
+            required
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            IPアドレス
+          </label>
+          <input
+            type="text"
+            class="worker-ip w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+            placeholder="192.168.1.11"
+            required
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            SSHユーザー
+          </label>
+          <input
+            type="text"
+            class="worker-user w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+            value="ubuntu"
+            required
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            SSHポート
+          </label>
+          <input
+            type="number"
+            class="worker-port w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+            value="22"
+            required
+          />
+        </div>
+        <div class="col-span-2">
+          <label class="flex items-center space-x-2">
+            <input type="checkbox" class="worker-gpu" />
+            <span class="text-sm text-gray-700 dark:text-gray-300">GPU搭載</span>
+          </label>
+          <label class="flex items-center space-x-2 mt-1">
+            <input type="checkbox" class="worker-carla" />
+            <span class="text-sm text-gray-700 dark:text-gray-300">CARLAホスト</span>
+          </label>
+          <label class="flex items-center space-x-2 mt-1">
+            <input type="checkbox" class="worker-storage" />
+            <span class="text-sm text-gray-700 dark:text-gray-300">大容量ストレージ</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', nodeHtml);
+}
+
+function removeWorkerNode(nodeId) {
+  const node = document.querySelector(`[data-node-id="${nodeId}"]`);
+  if (node) {
+    node.remove();
+  }
+}
+
+function collectFormData() {
+  const clusterName = document.getElementById('cluster-name').value;
+
+  // Manager node
+  const managerNode = {
+    id: 'manager',
+    hostname: document.getElementById('manager-hostname').value,
+    ip_address: document.getElementById('manager-ip').value,
+    role: 'manager',
+    ssh_user: document.getElementById('manager-user').value,
+    ssh_port: parseInt(document.getElementById('manager-port').value),
+    has_gpu: false,
+    is_carla_host: false,
+    has_storage: false,
+    labels: {}
+  };
+
+  // Worker nodes
+  const workerNodes = [];
+  document.querySelectorAll('.worker-node').forEach((node, index) => {
+    workerNodes.push({
+      id: `worker-${index + 1}`,
+      hostname: node.querySelector('.worker-hostname').value,
+      ip_address: node.querySelector('.worker-ip').value,
+      role: 'worker',
+      ssh_user: node.querySelector('.worker-user').value,
+      ssh_port: parseInt(node.querySelector('.worker-port').value),
+      has_gpu: node.querySelector('.worker-gpu').checked,
+      is_carla_host: node.querySelector('.worker-carla').checked,
+      has_storage: node.querySelector('.worker-storage').checked,
+      labels: {}
+    });
+  });
+
+  return {
+    cluster_config: {
+      name: clusterName,
+      manager_node: managerNode,
+      worker_nodes: workerNodes,
+      build_alpamayo: document.getElementById('build-alpamayo').checked,
+      local_registry_port: 5000,
+      atlas_project_dir: '/opt/atlas'
+    },
+    skip_docker_setup: document.getElementById('skip-docker').checked,
+    skip_swarm_init: document.getElementById('skip-swarm').checked
+  };
+}
+
+async function saveConfig() {
+  const data = collectFormData();
+
+  try {
+    const response = await fetch('/api/cluster/config/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data.cluster_config)
+    });
+
+    if (response.ok) {
+      alert('設定を保存しました');
+    } else {
+      alert('設定の保存に失敗しました');
+    }
+  } catch (error) {
+    console.error('Error saving config:', error);
+    alert('設定の保存に失敗しました');
+  }
+}
+
+document.getElementById('cluster-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const data = collectFormData();
+
+  // Show progress section
+  document.getElementById('deployment-progress').classList.remove('hidden');
+  document.getElementById('deployment-logs').innerHTML = '';
+
+  try {
+    // Start deployment
+    const response = await fetch('/api/cluster/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    const result = await response.json();
+    const taskId = result.task_id;
+
+    // Poll for progress
+    pollDeploymentStatus(taskId);
+
+  } catch (error) {
+    console.error('Error starting deployment:', error);
+    alert('デプロイの開始に失敗しました');
+  }
+});
+
+async function pollDeploymentStatus(taskId) {
+  const interval = setInterval(async () => {
+    try {
+      const response = await fetch(`/api/cluster/deployment/${taskId}`);
+      const task = await response.json();
+
+      // Update progress bar
+      document.getElementById('progress-percentage').textContent = `${Math.round(task.progress)}%`;
+      document.getElementById('progress-bar').style.width = `${task.progress}%`;
+      document.getElementById('progress-step').textContent = task.current_step;
+
+      // Update logs
+      const logsContainer = document.getElementById('deployment-logs');
+      logsContainer.innerHTML = task.logs.map(log => `<div>${log}</div>`).join('');
+      logsContainer.scrollTop = logsContainer.scrollHeight;
+
+      // Check if completed or failed
+      if (task.status === 'completed' || task.status === 'failed') {
+        clearInterval(interval);
+
+        if (task.status === 'completed') {
+          alert('デプロイが完了しました！');
+        } else {
+          alert(`デプロイが失敗しました: ${task.error}`);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error polling status:', error);
+    }
+  }, 2000); // Poll every 2 seconds
+}
+
+// Add first worker node by default
+addWorkerNode();
+</script>

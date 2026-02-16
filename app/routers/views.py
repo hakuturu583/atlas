@@ -65,3 +65,9 @@ async def fiftyone_viewer_view(request: Request):
             "fiftyone_url": fiftyone_url
         }
     )
+
+
+@router.get("/cluster_setup", response_class=HTMLResponse)
+async def cluster_setup_view(request: Request):
+    """クラスタセットアップ画面"""
+    return templates.TemplateResponse("views/cluster_setup.html", {"request": request})

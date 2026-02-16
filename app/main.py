@@ -7,7 +7,7 @@ from pathlib import Path
 import logging
 import atexit
 
-from app.routers import views, api, websocket
+from app.routers import views, api, websocket, cluster_api
 from app.services.carla_manager import get_carla_manager
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.include_router(views.router)
 app.include_router(api.router)
 app.include_router(websocket.router)
+app.include_router(cluster_api.router)
 
 
 # アプリケーション起動時の処理
