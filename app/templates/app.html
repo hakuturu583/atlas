@@ -434,82 +434,15 @@
         <div class="right-pane">
             <div class="pane-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <span>🤖 Claude Code Terminal</span>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="cluster-setup-btn" class="settings-button"
-                            hx-get="/views/cluster_setup"
-                            hx-target="#content-fiftyone"
-                            hx-swap="innerHTML">
-                        🌐 クラスタ設定
-                    </button>
-                    <button id="settings-btn" class="settings-button">
-                        ⚙️ CARLA設定
-                    </button>
-                </div>
+                <button id="cluster-setup-btn" class="settings-button"
+                        hx-get="/views/cluster_setup"
+                        hx-target="#content-fiftyone"
+                        hx-swap="innerHTML">
+                    🌐 クラスタ設定
+                </button>
             </div>
             <div class="terminal-container">
                 <div id="terminal"></div>
-            </div>
-        </div>
-
-        <!-- 設定モーダル -->
-        <div id="settings-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>⚙️ CARLA設定</h2>
-                    <button id="close-modal" class="close-button">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <form id="carla-settings-form">
-                        <div class="form-group">
-                            <label for="carla-path">CARLAパス</label>
-                            <input type="text" id="carla-path" name="carla_path" placeholder="/path/to/CARLA_0.10.0" />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="carla-map">デフォルトマップ</label>
-                            <select id="carla-map" name="default_map">
-                                <option value="Town10HD_Opt">Town10HD_Opt</option>
-                                <option value="Town01">Town01</option>
-                                <option value="Town02">Town02</option>
-                                <option value="Town03">Town03</option>
-                                <option value="Town04">Town04</option>
-                                <option value="Town05">Town05</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="carla-port">ポート</label>
-                            <input type="number" id="carla-port" name="default_port" value="2000" min="2000" max="9999" />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="quality-level">品質レベル</label>
-                            <select id="quality-level" name="quality_level">
-                                <option value="Low">Low</option>
-                                <option value="Epic">Epic</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group checkbox">
-                            <label>
-                                <input type="checkbox" id="render-offscreen" name="render_offscreen" checked />
-                                オフスクリーンレンダリング (-RenderOffScreen)
-                            </label>
-                        </div>
-
-                        <div class="form-group checkbox">
-                            <label>
-                                <input type="checkbox" id="auto-start" name="auto_start" />
-                                起動時にCARLAを自動起動
-                            </label>
-                        </div>
-
-                        <div class="button-group">
-                            <button type="button" id="save-settings" class="btn btn-primary">保存</button>
-                            <button type="button" id="cancel-settings" class="btn btn-secondary">キャンセル</button>
-                        </div>
-                    </form>
-                </div>
             </div>
         </div>
     </div>
@@ -811,87 +744,6 @@
         // タブクリックイベント
         tabFiftyone.addEventListener('click', () => switchTab('fiftyone'));
         tabGraph.addEventListener('click', () => switchTab('graph'));
-
-        // 設定モーダル
-        const settingsBtn = document.getElementById('settings-btn');
-        const settingsModal = document.getElementById('settings-modal');
-        const closeModalBtn = document.getElementById('close-modal');
-        const cancelBtn = document.getElementById('cancel-settings');
-        const saveBtn = document.getElementById('save-settings');
-
-        // モーダルを開く
-        settingsBtn.addEventListener('click', async () => {
-            // 現在の設定を読み込み
-            try {
-                const response = await fetch('/api/carla/settings');
-                const settings = await response.json();
-
-                document.getElementById('carla-path').value = settings.carla_path || '';
-                document.getElementById('carla-map').value = settings.default_map || 'Town10HD_Opt';
-                document.getElementById('carla-port').value = settings.default_port || 2000;
-                document.getElementById('quality-level').value = settings.quality_level || 'Low';
-                document.getElementById('auto-start').checked = settings.auto_start || false;
-
-                // RenderOffScreenは追加引数から判定
-                const renderOffscreen = settings.additional_args?.includes('-RenderOffScreen');
-                document.getElementById('render-offscreen').checked = renderOffscreen || false;
-            } catch (error) {
-                console.error('Failed to load settings:', error);
-            }
-
-            settingsModal.classList.add('active');
-        });
-
-        // モーダルを閉じる
-        const closeModal = () => {
-            settingsModal.classList.remove('active');
-        };
-
-        closeModalBtn.addEventListener('click', closeModal);
-        cancelBtn.addEventListener('click', closeModal);
-
-        // モーダル外をクリックで閉じる
-        settingsModal.addEventListener('click', (e) => {
-            if (e.target === settingsModal) {
-                closeModal();
-            }
-        });
-
-        // 設定を保存
-        saveBtn.addEventListener('click', async () => {
-            const formData = new FormData();
-            formData.append('carla_path', document.getElementById('carla-path').value);
-            formData.append('executable_name', 'CarlaUE5.sh');
-            formData.append('default_port', document.getElementById('carla-port').value);
-            formData.append('default_map', document.getElementById('carla-map').value);
-            formData.append('quality_level', document.getElementById('quality-level').value);
-            formData.append('timeout', '60');
-            formData.append('auto_start', document.getElementById('auto-start').checked);
-
-            // 追加引数を構築
-            let additionalArgs = [];
-            if (document.getElementById('render-offscreen').checked) {
-                additionalArgs.push('-RenderOffScreen');
-            }
-            formData.append('additional_args', additionalArgs.join(' '));
-
-            try {
-                const response = await fetch('/api/carla/settings', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (response.ok) {
-                    alert('設定を保存しました');
-                    closeModal();
-                } else {
-                    alert('設定の保存に失敗しました');
-                }
-            } catch (error) {
-                console.error('Failed to save settings:', error);
-                alert('設定の保存に失敗しました: ' + error.message);
-            }
-        });
     </script>
 </body>
 </html>

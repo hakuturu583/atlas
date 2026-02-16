@@ -5,10 +5,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
 from pathlib import Path
 import logging
-import atexit
 
 from app.routers import views, api, websocket, cluster_api
-from app.services.carla_manager import get_carla_manager
 
 logger = logging.getLogger(__name__)
 
@@ -51,59 +49,13 @@ async def startup_event():
     """アプリケーション起動時の初期化処理"""
     logger.info("ATLAS application starting up...")
 
-    # CARLA設定を読み込み
-    carla_manager = get_carla_manager()
-    settings = carla_manager.get_settings()
-
-    logger.info(f"CARLA settings loaded: {settings.carla_path}")
-
-    # 自動起動が有効な場合はCARLAを起動
-    if settings.auto_start:
-        logger.info("Auto-starting CARLA server...")
-        result = await carla_manager.launch_carla()
-        if result["success"]:
-            logger.info(f"CARLA started successfully (PID: {result['pid']})")
-        else:
-            logger.warning(f"Failed to auto-start CARLA: {result['message']}")
-
 
 # アプリケーション終了時の処理
 @app.on_event("shutdown")
 async def shutdown_event():
     """アプリケーション終了時のクリーンアップ処理"""
     logger.info("ATLAS application shutting down...")
-
-    # CARLAサーバーを停止
-    logger.info("Stopping CARLA server...")
-    try:
-        carla_manager = get_carla_manager()
-        if carla_manager.is_running():
-            result = carla_manager.stop_carla()
-            if result["success"]:
-                logger.info(f"CARLA stopped successfully (PID: {result['pid']})")
-            else:
-                logger.warning(f"Failed to stop CARLA: {result['message']}")
-        else:
-            logger.info("CARLA was not running")
-    except Exception as e:
-        logger.error(f"Error stopping CARLA: {e}")
-
     logger.info("ATLAS application shutdown complete")
-
-
-# atexitハンドラーも登録（プロセス終了時のフォールバック）
-def cleanup_on_exit():
-    """プロセス終了時のクリーンアップ（フォールバック）"""
-    try:
-        carla_manager = get_carla_manager()
-        if carla_manager.is_running():
-            logger.info("atexit: Stopping CARLA server...")
-            carla_manager.stop_carla()
-    except Exception as e:
-        logger.error(f"atexit: Error stopping CARLA: {e}")
-
-
-atexit.register(cleanup_on_exit)
 
 
 @app.get("/", response_class=HTMLResponse)

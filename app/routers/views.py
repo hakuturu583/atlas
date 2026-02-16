@@ -5,7 +5,6 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
-from app.services.carla_manager import get_carla_manager
 
 router = APIRouter(prefix="/views", tags=["views"])
 
@@ -37,20 +36,6 @@ async def rerun_viewer_view(request: Request):
     return templates.TemplateResponse("views/rerun_viewer.html", {"request": request})
 
 
-@router.get("/carla_settings", response_class=HTMLResponse)
-async def carla_settings_view(request: Request):
-    """CARLA設定画面"""
-    carla_manager = get_carla_manager()
-    settings = carla_manager.get_settings()
-    carla_status = carla_manager.get_status()
-    return templates.TemplateResponse(
-        "views/carla_settings.html",
-        {
-            "request": request,
-            "settings": settings,
-            "carla_status": carla_status
-        }
-    )
 
 
 @router.get("/fiftyone_viewer", response_class=HTMLResponse)
