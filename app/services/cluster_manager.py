@@ -80,8 +80,12 @@ class ClusterManager:
         )
         if manager.ssh_key_path:
             manager_line += f" ansible_ssh_private_key_file={manager.ssh_key_path}"
+            logger.debug(f"Manager: Using SSH key authentication")
         if manager.use_password and manager.ssh_password:
             manager_line += f" ansible_ssh_pass={manager.ssh_password}"
+            logger.debug(f"Manager: Using password authentication (password provided)")
+        elif manager.use_password and not manager.ssh_password:
+            logger.warning(f"Manager: Password authentication enabled but no password provided!")
         lines.append(manager_line)
         lines.append("")
 
@@ -97,8 +101,12 @@ class ClusterManager:
                 )
                 if worker.ssh_key_path:
                     worker_line += f" ansible_ssh_private_key_file={worker.ssh_key_path}"
+                    logger.debug(f"Worker {worker.hostname}: Using SSH key authentication")
                 if worker.use_password and worker.ssh_password:
                     worker_line += f" ansible_ssh_pass={worker.ssh_password}"
+                    logger.debug(f"Worker {worker.hostname}: Using password authentication (password provided)")
+                elif worker.use_password and not worker.ssh_password:
+                    logger.warning(f"Worker {worker.hostname}: Password authentication enabled but no password provided!")
                 if worker.has_gpu:
                     worker_line += " gpu=true"
                 if worker.is_carla_host:
@@ -415,8 +423,13 @@ class ClusterManager:
             config: Cluster configuration
         """
         config_path = self.inventory_dir / f"cluster_{config.name}.json"
-        config_path.write_text(config.model_dump_json(indent=2))
-        logger.info(f"Saved cluster config to {config_path}")
+
+        # Exclude sensitive fields (ssh_password) when saving
+        config_dict = config.model_dump(exclude={'manager_node': {'ssh_password'}, 'worker_nodes': {'__all__': {'ssh_password'}}})
+
+        import json
+        config_path.write_text(json.dumps(config_dict, indent=2))
+        logger.info(f"Saved cluster config to {config_path} (passwords excluded)")
 
     def load_cluster_config(self, name: str) -> Optional[ClusterConfig]:
         """Load cluster configuration from disk.
