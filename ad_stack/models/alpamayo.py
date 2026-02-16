@@ -2,13 +2,15 @@
 Alpamayo-R1-10B VLAモデル実装
 
 HuggingFaceからモデルをロードし、推論を実行
+Reference: https://github.com/NVlabs/alpamayo
 """
 
 import time
 import os
 import sys
-from typing import Optional
+from typing import Optional, List, Tuple
 import logging
+import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -23,6 +25,7 @@ class AlpamayoR1Model(VLAModelBase):
     Alpamayo-R1-10B VLAモデル
 
     HuggingFaceからモデルをロードし、推論を実行
+    Reference: https://github.com/NVlabs/alpamayo
     """
 
     def __init__(
@@ -30,6 +33,9 @@ class AlpamayoR1Model(VLAModelBase):
         model_id: str = "nvidia/Alpamayo-R1-10B",
         device: str = "cuda",
         use_cache: bool = True,
+        top_p: float = 0.98,
+        temperature: float = 0.6,
+        num_traj_samples: int = 1,
     ):
         super().__init__(model_name="Alpamayo-R1-10B", version="1.0.0")
         self.model_id = model_id
@@ -37,6 +43,12 @@ class AlpamayoR1Model(VLAModelBase):
         self.use_cache = use_cache
         self.model = None
         self.processor = None
+        self.helper = None
+
+        # Sampling parameters
+        self.top_p = top_p
+        self.temperature = temperature
+        self.num_traj_samples = num_traj_samples
 
     def initialize(self) -> bool:
         """
@@ -50,12 +62,14 @@ class AlpamayoR1Model(VLAModelBase):
             self.initialization_status.progress = 0.1
             self.initialization_status.message = "Downloading model weights from HuggingFace..."
 
-            # HuggingFace transformersライブラリをインポート
+            # Import required libraries
             try:
-                from transformers import AlpamayoR1
-            except ImportError:
-                logger.error("transformers library not installed or AlpamayoR1 not available")
-                self.initialization_status.message = "Error: transformers not installed or AlpamayoR1 not available"
+                import torch
+                from alpamayo_r1.models.alpamayo_r1 import AlpamayoR1
+                from alpamayo_r1 import helper
+            except ImportError as e:
+                logger.error(f"Failed to import Alpamayo libraries: {e}")
+                self.initialization_status.message = f"Error: {e}"
                 return False
 
             # モデルのダウンロード（時間がかかる可能性あり）
@@ -63,17 +77,19 @@ class AlpamayoR1Model(VLAModelBase):
             self.initialization_status.progress = 0.3
             self.initialization_status.message = "Loading AlpamayoR1 model from HuggingFace..."
 
-            # Load model using AlpamayoR1 class
+            # Load model using AlpamayoR1 class (official implementation)
             try:
                 self.model = AlpamayoR1.from_pretrained(
                     self.model_id,
-                    dtype="auto"
-                )
-                self.initialization_status.progress = 0.7
-                self.initialization_status.message = "Model loaded successfully"
+                    dtype=torch.bfloat16
+                ).to(self.device)
 
-                # AlpamayoR1 may include processor as part of the model
-                self.processor = self.model
+                self.initialization_status.progress = 0.7
+                self.initialization_status.message = "Loading processor..."
+
+                # Get processor from helper
+                self.helper = helper
+                self.processor = helper.get_processor(self.model.tokenizer)
             except Exception as e:
                 logger.error(f"Failed to load model: {e}")
                 self.initialization_status.message = f"Error loading model: {e}"
@@ -152,32 +168,132 @@ class AlpamayoR1Model(VLAModelBase):
             # フォールバック: ダミー軌跡を返す
             return self._get_fallback_output(sensor_bundle)
 
-    def _preprocess_images(self, cameras):
-        """カメラ画像を前処理"""
-        # JPEG画像をデコードして正規化
-        # Alpamayoのプリプロセッサに従う
-        # TODO: 実装
-        return []
+    def _preprocess_images(self, cameras) -> Tuple[any, any]:
+        """
+        カメラ画像を前処理してAlpamayo入力形式に変換
 
-    def _run_inference(self, images, vehicle_state):
-        """モデル推論を実行"""
-        # Alpamayoモデルで推論
-        # TODO: 実装
+        Returns:
+            messages: チャットメッセージ形式の画像データ
+            image_frames: 画像テンソル
+        """
+        import torch
+        from PIL import Image
+        import io
 
-        # プレースホルダー: 直進軌跡
+        # カメラ画像をデコード
+        image_list = []
+        for camera in cameras:
+            img_bytes = camera.image_data
+            img = Image.open(io.BytesIO(img_bytes))
+            image_list.append(img)
+
+        # 画像をテンソルに変換（Alpamayo形式）
+        # Shape: [num_cameras, H, W, C]
+        image_frames = torch.stack([
+            torch.from_numpy(np.array(img)).float() / 255.0
+            for img in image_list
+        ])
+
+        # Create message format (similar to official implementation)
+        messages = self.helper.create_message(image_frames.flatten(0, 1))
+
+        return messages, image_frames
+
+    def _run_inference(self, images, vehicle_state) -> List:
+        """
+        Alpamayoモデルで推論を実行（公式実装に基づく）
+
+        Reference: https://github.com/NVlabs/alpamayo/blob/main/src/alpamayo_r1/test_inference.py
+        """
+        import torch
+
+        messages, image_frames = images
+
+        # Input preprocessing (公式実装に従う)
+        inputs = self.processor.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=False,
+            continue_final_message=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+
+        # Create ego history (placeholder - should come from sensor data)
+        # TODO: Extract from vehicle_state history
+        batch_size = 1
+        ego_history_xyz = torch.zeros((batch_size, 10, 3), device=self.device)
+        ego_history_rot = torch.eye(3, device=self.device).unsqueeze(0).repeat(batch_size, 10, 1, 1)
+
+        model_inputs = {
+            "tokenized_data": inputs,
+            "ego_history_xyz": ego_history_xyz,
+            "ego_history_rot": ego_history_rot,
+        }
+        model_inputs = self.helper.to_device(model_inputs, self.device)
+
+        # Run inference with official method
+        with torch.autocast(self.device, dtype=torch.bfloat16):
+            pred_xyz, pred_rot, extra = self.model.sample_trajectories_from_data_with_vlm_rollout(
+                data=model_inputs,
+                top_p=self.top_p,
+                temperature=self.temperature,
+                num_traj_samples=self.num_traj_samples,
+                max_generation_length=256,
+                return_extra=True,
+            )
+
+        # Convert predictions to waypoints
+        waypoints = self._convert_to_waypoints(pred_xyz, pred_rot, extra)
+
+        # Log reasoning trace
+        if "cot" in extra and len(extra["cot"]) > 0:
+            logger.info(f"Chain-of-Causation: {extra['cot'][0]}")
+            self.last_reasoning = extra["cot"][0]
+
+        return waypoints
+
+    def _convert_to_waypoints(self, pred_xyz: "torch.Tensor", pred_rot: "torch.Tensor", extra: dict) -> List:
+        """
+        Alpamayo予測結果をWaypointリストに変換
+
+        Args:
+            pred_xyz: Predicted positions [batch, num_samples, num_waypoints, 3]
+            pred_rot: Predicted rotations [batch, num_samples, num_waypoints, 3, 3]
+            extra: Extra outputs including reasoning traces
+
+        Returns:
+            List of Waypoint protobuf messages
+        """
+        # Take first trajectory sample
+        xyz = pred_xyz.cpu().numpy()[0, 0]  # [64, 3]
+        rot = pred_rot.cpu().numpy()[0, 0]  # [64, 3, 3]
+
         waypoints = []
-        target_speed_mps = 10.0
-        for i in range(64):
-            t = (i + 1) * 0.1
+        for i in range(len(xyz)):
+            t = (i + 1) * 0.1  # 10 Hz sampling
+
+            # Flatten rotation matrix
+            rot_flat = rot[i].flatten().tolist()
+
+            # Calculate speed from position delta
+            if i > 0:
+                dx = xyz[i, 0] - xyz[i-1, 0]
+                dy = xyz[i, 1] - xyz[i-1, 1]
+                speed_mps = np.sqrt(dx**2 + dy**2) / 0.1
+            else:
+                speed_mps = 0.0
+
             waypoint = control_command_pb2.Waypoint(
-                x=target_speed_mps * t,
-                y=0.0,
-                z=0.0,
-                rotation_matrix=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                x=float(xyz[i, 0]),
+                y=float(xyz[i, 1]),
+                z=float(xyz[i, 2]),
+                rotation_matrix=rot_flat,
                 timestamp_offset_sec=t,
-                speed_mps=target_speed_mps,
+                speed_mps=float(speed_mps),
             )
             waypoints.append(waypoint)
+
         return waypoints
 
     def _get_fallback_output(

@@ -58,6 +58,10 @@ RUN pip3 install --no-cache-dir \
 
     einops>=0.7.0
 
+# Install alpamayo_r1 from official repository
+RUN pip3 install --no-cache-dir \
+    git+https://github.com/NVlabs/alpamayo.git
+
 
 
 
