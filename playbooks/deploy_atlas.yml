@@ -13,6 +13,8 @@
     atlas_project_dir: "{{ atlas_project_dir | default('/opt/atlas') }}"
     atlas_stack_name: "{{ atlas_stack_name | default('atlas') }}"
     local_registry_port: "{{ local_registry_port | default('5000') }}"
+    deploy_scenario: "{{ deploy_scenario | default(false) }}"
+    deploy_ad_stack: "{{ deploy_ad_stack | default(false) }}"
     build_alpamayo: "{{ build_alpamayo | default(false) }}"
 
   tasks:
@@ -95,7 +97,7 @@
       tags: [setup, registry]
 
     # ========================================
-    # Generate gRPC Code
+    # Generate gRPC Code (if AD Stack is deployed)
     # ========================================
     - name: Generate gRPC code
       command: make generate-grpc
@@ -103,10 +105,11 @@
         chdir: "{{ atlas_project_dir }}"
       environment:
         PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+      when: deploy_ad_stack
       tags: [build, grpc]
 
     # ========================================
-    # Generate Dockerfiles
+    # Generate Dockerfiles (if AD Stack is deployed)
     # ========================================
     - name: Generate VLA Dockerfiles from templates
       command: python3 scripts/generate_dockerfiles.py
@@ -114,10 +117,11 @@
         chdir: "{{ atlas_project_dir }}"
       environment:
         PYTHONPATH: "{{ atlas_project_dir }}"
+      when: deploy_ad_stack
       tags: [build, dockerfile]
 
     # ========================================
-    # Build and Push Images
+    # Build and Push Images (Conditional)
     # ========================================
     - name: Build base VLA image
       command: >
@@ -127,6 +131,7 @@
         .
       args:
         chdir: "{{ atlas_project_dir }}"
+      when: deploy_ad_stack
       tags: [build, images]
 
     - name: Build dummy VLA image
@@ -137,6 +142,7 @@
         .
       args:
         chdir: "{{ atlas_project_dir }}"
+      when: deploy_ad_stack
       tags: [build, images]
 
     - name: Tag and push dummy VLA image to local registry
@@ -145,6 +151,7 @@
         docker push localhost:{{ local_registry_port }}/atlas-vla-dummy:latest
       args:
         chdir: "{{ atlas_project_dir }}"
+      when: deploy_ad_stack
       tags: [build, images]
 
     - name: Build Alpamayo VLA image (if requested)
@@ -155,7 +162,7 @@
         .
       args:
         chdir: "{{ atlas_project_dir }}"
-      when: build_alpamayo
+      when: deploy_ad_stack and build_alpamayo
       tags: [build, images, alpamayo]
 
     - name: Tag and push Alpamayo VLA image (if built)
@@ -164,7 +171,7 @@
         docker push localhost:{{ local_registry_port }}/atlas-vla-alpamayo:latest
       args:
         chdir: "{{ atlas_project_dir }}"
-      when: build_alpamayo
+      when: deploy_ad_stack and build_alpamayo
       tags: [build, images, alpamayo]
 
     - name: Build scenario execution image
@@ -175,6 +182,7 @@
         .
       args:
         chdir: "{{ atlas_project_dir }}"
+      when: deploy_scenario
       tags: [build, images]
 
     - name: Tag and push scenario image to local registry
@@ -183,6 +191,7 @@
         docker push localhost:{{ local_registry_port }}/atlas-scenario:latest
       args:
         chdir: "{{ atlas_project_dir }}"
+      when: deploy_scenario
       tags: [build, images]
 
     # ========================================
@@ -195,10 +204,29 @@
       failed_when: false
       tags: [deploy, labels]
 
+    - name: Build compose file list
+      set_fact:
+        compose_files: >-
+          -c docker-compose.stack.yml
+          {% if deploy_scenario %} -c docker-compose.stack.scenario.yml{% endif %}
+          {% if deploy_ad_stack %} -c docker-compose.stack.adstack.yml{% endif %}
+      tags: [deploy, stack]
+
+    - name: Display deployment configuration
+      debug:
+        msg: |
+          Deploying ATLAS with:
+            - CARLA: yes (必須)
+            - Scenario: {{ 'yes' if deploy_scenario else 'no' }}
+            - AD Stack: {{ 'yes' if deploy_ad_stack else 'no' }}
+            - Alpamayo: {{ 'yes' if (deploy_ad_stack and build_alpamayo) else 'no' }}
+          Compose files: {{ compose_files }}
+      tags: [deploy, stack]
+
     - name: Deploy ATLAS stack
       command: >
         docker stack deploy
-        -c docker-compose.stack.yml
+        {{ compose_files }}
         {{ atlas_stack_name }}
       args:
         chdir: "{{ atlas_project_dir }}"

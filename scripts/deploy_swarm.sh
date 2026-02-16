@@ -1,7 +1,7 @@
 #!/bin/bash
 # ========================================
 # Docker Swarm Deployment Script
-# Deploys ATLAS stack (CARLA + Scenario + VLA)
+# Deploys ATLAS stack (CARLA [必須] + Scenario [オプション] + VLA [オプション])
 # ========================================
 
 set -e
@@ -10,6 +10,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 STACK_NAME="${STACK_NAME:-atlas}"
 REGISTRY_PORT="${REGISTRY_PORT:-5000}"
+
+# デプロイオプション
+DEPLOY_SCENARIO=false
+DEPLOY_AD_STACK=false
+BUILD_ALPAMAYO=false
 
 # カラー出力
 RED='\033[0;31m'
@@ -97,53 +102,63 @@ build_images() {
 
     cd "${PROJECT_ROOT}"
 
-    # gRPCコード生成
-    log_info "Generating gRPC code..."
-    make generate-grpc || {
-        log_error "Failed to generate gRPC code"
-        exit 1
-    }
+    # CARLA: 公式イメージを使用（ビルド不要）
+    log_info "CARLA will use official image: carlasim/carla:0.9.15"
 
-    # VLA Dockerfilesを生成
-    log_info "Generating VLA Dockerfiles..."
-    uv run python scripts/generate_dockerfiles.py || {
-        log_error "Failed to generate Dockerfiles"
-        exit 1
-    }
+    # AD Stackが必要な場合のみビルド
+    if [ "$DEPLOY_AD_STACK" = "true" ]; then
+        # gRPCコード生成
+        log_info "Generating gRPC code..."
+        make generate-grpc || {
+            log_error "Failed to generate gRPC code"
+            exit 1
+        }
 
-    # ベースイメージ
-    log_info "Building atlas-vla-base..."
-    docker build -t atlas-vla-base:latest -f docker/Dockerfile.base . || {
-        log_error "Failed to build atlas-vla-base"
-        exit 1
-    }
+        # VLA Dockerfilesを生成
+        log_info "Generating VLA Dockerfiles..."
+        uv run python scripts/generate_dockerfiles.py || {
+            log_error "Failed to generate Dockerfiles"
+            exit 1
+        }
 
-    # ダミーVLA
-    log_info "Building atlas-vla-dummy..."
-    docker build -t atlas-vla-dummy:latest -f docker/Dockerfile.dummy . || {
-        log_error "Failed to build atlas-vla-dummy"
-        exit 1
-    }
+        # ベースイメージ
+        log_info "Building atlas-vla-base..."
+        docker build -t atlas-vla-base:latest -f docker/Dockerfile.base . || {
+            log_error "Failed to build atlas-vla-base"
+            exit 1
+        }
 
-    # Alpamayo VLA（オプション）
-    if [ "$BUILD_ALPAMAYO" = "true" ]; then
-        log_info "Building atlas-vla-alpamayo..."
-        docker build -t atlas-vla-alpamayo:latest -f docker/Dockerfile.alpamayo . || {
-            log_error "Failed to build atlas-vla-alpamayo"
+        # ダミーVLA
+        log_info "Building atlas-vla-dummy..."
+        docker build -t atlas-vla-dummy:latest -f docker/Dockerfile.dummy . || {
+            log_error "Failed to build atlas-vla-dummy"
+            exit 1
+        }
+
+        # Alpamayo VLA（オプション）
+        if [ "$BUILD_ALPAMAYO" = "true" ]; then
+            log_info "Building atlas-vla-alpamayo..."
+            docker build -t atlas-vla-alpamayo:latest -f docker/Dockerfile.alpamayo . || {
+                log_error "Failed to build atlas-vla-alpamayo"
+                exit 1
+            }
+        fi
+    else
+        log_info "Skipping AD Stack images (--with-ad-stack not specified)"
+    fi
+
+    # シナリオ実行コンテナが必要な場合のみビルド
+    if [ "$DEPLOY_SCENARIO" = "true" ]; then
+        log_info "Building atlas-scenario..."
+        docker build -t atlas-scenario:latest -f docker/Dockerfile.scenario . || {
+            log_error "Failed to build atlas-scenario"
             exit 1
         }
     else
-        log_info "Skipping atlas-vla-alpamayo (set BUILD_ALPAMAYO=true to build)"
+        log_info "Skipping scenario image (--with-scenario not specified)"
     fi
 
-    # シナリオ実行コンテナ
-    log_info "Building atlas-scenario..."
-    docker build -t atlas-scenario:latest -f docker/Dockerfile.scenario . || {
-        log_error "Failed to build atlas-scenario"
-        exit 1
-    }
-
-    log_success "All images built successfully"
+    log_success "Required images built successfully"
 }
 
 # ========================================
@@ -152,26 +167,36 @@ build_images() {
 push_images() {
     log_info "Pushing images to local registry..."
 
-    # タグ付け＆プッシュ
-    for image in atlas-vla-dummy atlas-scenario; do
-        log_info "Pushing ${image}..."
-        docker tag ${image}:latest localhost:${REGISTRY_PORT}/${image}:latest
-        docker push localhost:${REGISTRY_PORT}/${image}:latest || {
-            log_error "Failed to push ${image}"
+    # AD Stackイメージをプッシュ
+    if [ "$DEPLOY_AD_STACK" = "true" ]; then
+        log_info "Pushing atlas-vla-dummy..."
+        docker tag atlas-vla-dummy:latest localhost:${REGISTRY_PORT}/atlas-vla-dummy:latest
+        docker push localhost:${REGISTRY_PORT}/atlas-vla-dummy:latest || {
+            log_error "Failed to push atlas-vla-dummy"
             exit 1
         }
-    done
 
-    if [ "$BUILD_ALPAMAYO" = "true" ]; then
-        log_info "Pushing atlas-vla-alpamayo..."
-        docker tag atlas-vla-alpamayo:latest localhost:${REGISTRY_PORT}/atlas-vla-alpamayo:latest
-        docker push localhost:${REGISTRY_PORT}/atlas-vla-alpamayo:latest || {
-            log_error "Failed to push atlas-vla-alpamayo"
+        if [ "$BUILD_ALPAMAYO" = "true" ]; then
+            log_info "Pushing atlas-vla-alpamayo..."
+            docker tag atlas-vla-alpamayo:latest localhost:${REGISTRY_PORT}/atlas-vla-alpamayo:latest
+            docker push localhost:${REGISTRY_PORT}/atlas-vla-alpamayo:latest || {
+                log_error "Failed to push atlas-vla-alpamayo"
+                exit 1
+            }
+        fi
+    fi
+
+    # シナリオイメージをプッシュ
+    if [ "$DEPLOY_SCENARIO" = "true" ]; then
+        log_info "Pushing atlas-scenario..."
+        docker tag atlas-scenario:latest localhost:${REGISTRY_PORT}/atlas-scenario:latest
+        docker push localhost:${REGISTRY_PORT}/atlas-scenario:latest || {
+            log_error "Failed to push atlas-scenario"
             exit 1
         }
     fi
 
-    log_success "All images pushed to localhost:${REGISTRY_PORT}"
+    log_success "Required images pushed to localhost:${REGISTRY_PORT}"
 }
 
 # ========================================
@@ -186,13 +211,31 @@ deploy_stack() {
     log_info "Labeling GPU nodes..."
     docker node update --label-add gpu=true $(docker node ls -q) || true
 
+    # Composeファイルのリストを構築
+    COMPOSE_FILES="-c docker-compose.stack.yml"
+
+    if [ "$DEPLOY_SCENARIO" = "true" ]; then
+        log_info "Including scenario service..."
+        COMPOSE_FILES="${COMPOSE_FILES} -c docker-compose.stack.scenario.yml"
+    fi
+
+    if [ "$DEPLOY_AD_STACK" = "true" ]; then
+        log_info "Including AD Stack service..."
+        COMPOSE_FILES="${COMPOSE_FILES} -c docker-compose.stack.adstack.yml"
+    fi
+
     # スタックをデプロイ
-    docker stack deploy -c docker-compose.stack.yml ${STACK_NAME} || {
+    log_info "Deploying with: docker stack deploy ${COMPOSE_FILES} ${STACK_NAME}"
+    docker stack deploy ${COMPOSE_FILES} ${STACK_NAME} || {
         log_error "Failed to deploy stack"
         exit 1
     }
 
     log_success "ATLAS stack deployed as '${STACK_NAME}'"
+    log_info "Services deployed:"
+    log_info "  - CARLA (必須)"
+    [ "$DEPLOY_SCENARIO" = "true" ] && log_info "  - Scenario execution"
+    [ "$DEPLOY_AD_STACK" = "true" ] && log_info "  - AD Stack (VLA)"
 }
 
 # ========================================
@@ -243,8 +286,17 @@ main() {
     # 引数パース
     while [[ $# -gt 0 ]]; do
         case $1 in
+            --with-scenario|-s)
+                DEPLOY_SCENARIO=true
+                shift
+                ;;
+            --with-ad-stack|-a)
+                DEPLOY_AD_STACK=true
+                shift
+                ;;
             --with-alpamayo)
                 BUILD_ALPAMAYO=true
+                DEPLOY_AD_STACK=true  # Alpamayoを含める場合はAD Stackも有効化
                 shift
                 ;;
             --stack-name)
@@ -258,11 +310,24 @@ main() {
             --help)
                 echo "Usage: $0 [OPTIONS]"
                 echo ""
+                echo "ATLAS Docker Swarm Deployment"
+                echo "  CARLAは常にデプロイされます（必須）"
+                echo "  その他のサービスはオプションです"
+                echo ""
                 echo "Options:"
-                echo "  --with-alpamayo       Build and deploy Alpamayo VLA service"
-                echo "  --stack-name NAME     Stack name (default: atlas)"
-                echo "  --registry-port PORT  Local registry port (default: 5000)"
-                echo "  --help                Show this help message"
+                echo "  -s, --with-scenario       シナリオ実行コンテナをデプロイ"
+                echo "  -a, --with-ad-stack       AD Stack (VLA dummy) をデプロイ"
+                echo "  --with-alpamayo           Alpamayo VLAをデプロイ (--with-ad-stackも有効化)"
+                echo "  --stack-name NAME         Stack name (default: atlas)"
+                echo "  --registry-port PORT      Local registry port (default: 5000)"
+                echo "  --help                    Show this help message"
+                echo ""
+                echo "Examples:"
+                echo "  $0                        # CARLAのみ"
+                echo "  $0 -s                     # CARLA + Scenario"
+                echo "  $0 -a                     # CARLA + AD Stack (dummy)"
+                echo "  $0 -s -a                  # CARLA + Scenario + AD Stack"
+                echo "  $0 --with-alpamayo        # CARLA + AD Stack (Alpamayo)"
                 exit 0
                 ;;
             *)

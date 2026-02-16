@@ -207,8 +207,22 @@ class ClusterManager:
             task.status = DeploymentStatus.DEPLOYING_ATLAS
             task.current_step = "Deploying ATLAS stack"
             task.progress = 75.0
+
+            # Prepare deployment options
+            deploy_options = {
+                "deploy_scenario": config.deploy_scenario,
+                "deploy_ad_stack": config.deploy_ad_stack,
+                "build_alpamayo": config.build_alpamayo,
+            }
+            task.logs.append(f"  Deployment options: {deploy_options}")
+
             await self._run_playbook(
-                task, "deploy_atlas", inventory_path, progress_start=75, progress_end=95
+                task,
+                "deploy_atlas",
+                inventory_path,
+                progress_start=75,
+                progress_end=95,
+                extra_vars=deploy_options,
             )
 
             # Completion
@@ -232,6 +246,7 @@ class ClusterManager:
         inventory_path: str,
         progress_start: float,
         progress_end: float,
+        extra_vars: Optional[Dict[str, Any]] = None,
     ):
         """Run an Ansible playbook.
 
@@ -241,6 +256,7 @@ class ClusterManager:
             inventory_path: Path to inventory file
             progress_start: Starting progress percentage
             progress_end: Ending progress percentage
+            extra_vars: Extra variables to pass to playbook
         """
         playbook_path = self.project_root / "playbooks" / f"{playbook_name}.yml"
 
@@ -250,6 +266,13 @@ class ClusterManager:
             "-i",
             inventory_path,
         ]
+
+        # Add extra variables if provided
+        if extra_vars:
+            import json
+
+            extra_vars_json = json.dumps(extra_vars)
+            cmd.extend(["--extra-vars", extra_vars_json])
 
         task.logs.append(f"▶ Running: {' '.join(cmd)}")
 

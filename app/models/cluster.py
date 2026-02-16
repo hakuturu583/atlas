@@ -60,8 +60,14 @@ class ClusterConfig(BaseModel):
     )
 
     # Deployment options
+    deploy_scenario: bool = Field(
+        default=False, description="Deploy scenario execution container"
+    )
+    deploy_ad_stack: bool = Field(
+        default=False, description="Deploy AD Stack (VLA dummy)"
+    )
     build_alpamayo: bool = Field(
-        default=False, description="Build and deploy Alpamayo VLA"
+        default=False, description="Build and deploy Alpamayo VLA (requires deploy_ad_stack)"
     )
     local_registry_port: int = Field(
         default=5000, description="Local Docker registry port"

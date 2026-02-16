@@ -1,0 +1,51 @@
+version: "3.8"
+
+# オプショナル: シナリオ実行コンテナ
+# デプロイ時に -c docker-compose.stack.scenario.yml を追加して使用
+
+services:
+  # シナリオ実行コンテナ
+  scenario:
+    image: localhost:5000/atlas-scenario:latest
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    networks:
+      - atlas-network
+    environment:
+      - CARLA_HOST=carla
+      - CARLA_PORT=2000
+      - AD_STACK_HOST=${AD_STACK_HOST:-ad-stack-dummy}
+      - AD_STACK_PORT=${AD_STACK_PORT:-50051}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - scenario-logs:/app/data/logs
+      - scenario-videos:/app/data/videos
+      - scenario-rerun:/app/data/rerun
+    command: >
+      bash -c "
+      echo 'Waiting for CARLA...';
+      sleep 30;
+      echo 'Starting scenario execution...';
+      tail -f /dev/null
+      "
+
+networks:
+  atlas-network:
+    external: true
+    name: atlas_atlas-network
+
+volumes:
+  scenario-logs:
+    driver: local
+  scenario-videos:
+    driver: local
+  scenario-rerun:
+    driver: local
