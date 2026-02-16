@@ -62,18 +62,11 @@ RUN pip3 install --no-cache-dir \
 
 
 # Copy files
-COPY ad_stack/server.py /app/ad_stack/server.py
-COPY ad_stack/models/alpamayo.py /app/ad_stack/models/alpamayo.py
-COPY ad_stack/models/base.py /app/ad_stack/models/base.py
+COPY ad_stack/ /app/ad_stack/
 COPY generated/grpc_pb2/ /app/generated/grpc_pb2/
 
-
-# Create Python package files and directories
-RUN mkdir -p /app/ad_stack/models /app/ad_stack/common /app/generated && \
-    touch /app/ad_stack/__init__.py && \
-    touch /app/ad_stack/models/__init__.py && \
-    touch /app/ad_stack/common/__init__.py && \
-    touch /app/generated/__init__.py && \
+# Ensure __init__.py files exist
+RUN touch /app/generated/__init__.py && \
     touch /app/generated/grpc_pb2/__init__.py
 
 
