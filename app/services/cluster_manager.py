@@ -233,11 +233,39 @@ class ClusterManager:
             task.logs.append("✓ ATLAS cluster deployed successfully!")
 
         except Exception as e:
+            import traceback
+
             logger.error(f"Deployment failed: {e}")
             task.status = DeploymentStatus.FAILED
             task.error = str(e)
             task.completed_at = datetime.now().isoformat()
-            task.logs.append(f"✗ Deployment failed: {e}")
+
+            # Write error details to log file
+            log_dir = self.project_root / "data" / "logs" / "ansible"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            error_log_file = log_dir / f"deployment_{task_id}_error_{timestamp}.log"
+
+            try:
+                with open(error_log_file, "w", encoding="utf-8") as f:
+                    f.write(f"=== Deployment Error ===\n")
+                    f.write(f"Task ID: {task_id}\n")
+                    f.write(f"Timestamp: {timestamp}\n")
+                    f.write(f"Error: {str(e)}\n")
+                    f.write(f"{'=' * 50}\n\n")
+                    f.write("Stack Trace:\n")
+                    f.write(traceback.format_exc())
+                    f.write(f"\n{'=' * 50}\n\n")
+                    f.write("Task Logs:\n")
+                    for log_line in task.logs:
+                        f.write(f"{log_line}\n")
+
+                task.logs.append(f"✗ Deployment failed: {e}")
+                task.logs.append(f"📄 Error log saved to: {error_log_file}")
+            except Exception as log_error:
+                logger.error(f"Failed to write error log: {log_error}")
+                task.logs.append(f"✗ Deployment failed: {e}")
+                task.logs.append(f"⚠️ Could not save error log: {log_error}")
 
     async def _run_playbook(
         self,
@@ -260,6 +288,14 @@ class ClusterManager:
         """
         playbook_path = self.project_root / "playbooks" / f"{playbook_name}.yml"
 
+        # Create log directory
+        log_dir = self.project_root / "data" / "logs" / "ansible"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create log file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = log_dir / f"deployment_{task.task_id}_{playbook_name}_{timestamp}.log"
+
         cmd = [
             "ansible-playbook",
             str(playbook_path),
@@ -275,44 +311,79 @@ class ClusterManager:
             cmd.extend(["--extra-vars", extra_vars_json])
 
         task.logs.append(f"▶ Running: {' '.join(cmd)}")
+        task.logs.append(f"📄 Log file: {log_file}")
 
-        # Run playbook
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            cwd=str(self.project_root),
-        )
+        # Open log file
+        log_handle = open(log_file, "w", encoding="utf-8")
+        try:
+            # Write header to log file
+            log_handle.write(f"=== Ansible Playbook Execution ===\n")
+            log_handle.write(f"Task ID: {task.task_id}\n")
+            log_handle.write(f"Playbook: {playbook_name}\n")
+            log_handle.write(f"Timestamp: {timestamp}\n")
+            log_handle.write(f"Command: {' '.join(cmd)}\n")
+            if extra_vars:
+                log_handle.write(f"Extra vars: {json.dumps(extra_vars, indent=2)}\n")
+            log_handle.write(f"{'=' * 50}\n\n")
+            log_handle.flush()
 
-        # Read output line by line
-        line_count = 0
-        max_lines = 50  # Estimate
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
-
-            line_text = line.decode().strip()
-            if line_text:
-                task.logs.append(line_text)
-                line_count += 1
-
-                # Update progress
-                progress_range = progress_end - progress_start
-                progress_increment = progress_range / max_lines
-                task.progress = min(
-                    progress_end, progress_start + (line_count * progress_increment)
-                )
-
-        await process.wait()
-
-        if process.returncode != 0:
-            raise RuntimeError(
-                f"Playbook {playbook_name} failed with exit code {process.returncode}"
+            # Run playbook
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(self.project_root),
             )
 
-        task.progress = progress_end
-        task.logs.append(f"✓ {playbook_name} completed")
+            # Read output line by line
+            line_count = 0
+            max_lines = 50  # Estimate
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+
+                line_text = line.decode().strip()
+                if line_text:
+                    # Write to both task logs and file
+                    task.logs.append(line_text)
+                    log_handle.write(line_text + "\n")
+                    log_handle.flush()
+                    line_count += 1
+
+                    # Update progress
+                    progress_range = progress_end - progress_start
+                    progress_increment = progress_range / max_lines
+                    task.progress = min(
+                        progress_end, progress_start + (line_count * progress_increment)
+                    )
+
+            await process.wait()
+
+            # Write footer to log file
+            log_handle.write(f"\n{'=' * 50}\n")
+            log_handle.write(f"Exit code: {process.returncode}\n")
+            log_handle.write(f"Status: {'SUCCESS' if process.returncode == 0 else 'FAILED'}\n")
+            log_handle.flush()
+
+            if process.returncode != 0:
+                error_msg = f"Playbook {playbook_name} failed with exit code {process.returncode}"
+                log_handle.write(f"\nERROR: {error_msg}\n")
+                log_handle.write(f"Log file: {log_file}\n")
+                log_handle.flush()
+
+                task.logs.append(f"✗ {error_msg}")
+                task.logs.append(f"📄 Full log available at: {log_file}")
+
+                raise RuntimeError(error_msg)
+
+            task.progress = progress_end
+            task.logs.append(f"✓ {playbook_name} completed")
+            log_handle.write(f"\nPlaybook completed successfully\n")
+            log_handle.flush()
+
+        finally:
+            log_handle.close()
 
     def get_deployment_status(self, task_id: str) -> Optional[DeploymentTask]:
         """Get deployment task status.

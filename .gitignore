@@ -32,6 +32,8 @@ Thumbs.db
 # Logs
 *.log
 logs/
+data/logs/**/*.log
+!data/logs/**/.gitkeep
 
 # Test
 .pytest_cache/
@@ -67,10 +69,12 @@ generated/
 .ansible/
 *.retry
 inventory.ini
+data/inventory/
 
 # Keep directory structure and examples
 !data/scenarios/.gitkeep
 !data/rerun/.gitkeep
 !data/videos/.gitkeep
+!data/logs/**/.gitkeep
 !scenarios/.gitkeep
 !scenarios/examples/
