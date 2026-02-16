@@ -1,52 +1,103 @@
 # ========================================
-# Alpamayo-R1-10B用イメージ
-# 共通ベースイメージ + Alpamayo実装 + ML依存関係
+# Auto-generated Dockerfile for VLA: alpamayo
+# DO NOT EDIT MANUALLY - Edit configs/vla/alpamayo.yaml instead
+# Generated from templates/Dockerfile.jinja2
 # ========================================
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS base
+
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
 WORKDIR /app
 
-# Python 3.10インストール
+
+# Install Python 3.10
 RUN apt-get update && apt-get install -y \
-    python3.10 python3-pip \
-    wget curl git \
+    python3.10 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/python3.10 /usr/bin/python
+
+
+# Install system packages
+
+RUN apt-get update && apt-get install -y \
+
+    wget \
+
+    curl \
+
+    git \
+
     && rm -rf /var/lib/apt/lists/*
 
-# Python依存関係（共通）
-COPY docker/requirements-base.txt /tmp/
-RUN pip3 install --no-cache-dir -r /tmp/requirements-base.txt
 
-# ML依存関係（Alpamayo用）
-COPY docker/requirements-alpamayo.txt /tmp/
-RUN pip3 install --no-cache-dir -r /tmp/requirements-alpamayo.txt
+# Install Python dependencies
 
-# gRPC生成コードをコピー
-COPY generated/grpc_pb2 /app/generated/grpc_pb2
+# common dependencies
+RUN pip3 install --no-cache-dir \
 
-# ad_stack共通コードをコピー
-COPY ad_stack/common /app/ad_stack/common
-COPY ad_stack/models/base.py /app/ad_stack/models/base.py
+    grpcio>=1.60.0 \
+
+    grpcio-tools>=1.60.0 \
+
+    protobuf>=4.25.0 \
+
+    pillow>=10.0.0
+
+
+
+# ml dependencies
+RUN pip3 install --no-cache-dir \
+
+    torch>=2.1.0 \
+
+    transformers>=4.35.0 \
+
+    accelerate>=0.25.0 \
+
+    sentencepiece>=0.1.99 \
+
+    einops>=0.7.0
+
+
+
+
+# Copy files
+
+COPY ad_stack/models/alpamayo.py /app/ad_stack/models/alpamayo.py
+
+
+# Create Python package files
+
+
 RUN touch /app/ad_stack/__init__.py
+
 RUN touch /app/ad_stack/models/__init__.py
+
 RUN touch /app/ad_stack/common/__init__.py
 
-# Alpamayoモデル実装をコピー
-COPY ad_stack/models/alpamayo.py /app/ad_stack/models/
-COPY ad_stack/server.py /app/ad_stack/
 
-# gRPCヘルスプローブ
+
+
+# Install gRPC health probe
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
     wget -qO/bin/grpc_health_probe \
     https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
     chmod +x /bin/grpc_health_probe
 
+
+# Set environment variables
+
 ENV PYTHONPATH=/app
+
+ENV VLA_PORT=50051
+
+ENV VLA_MAX_WORKERS=10
+
+ENV VLA_MODEL=alpamayo
+
 ENV HF_HOME=/app/.cache/huggingface
 
-# 環境変数
-ENV VLA_MODEL=alpamayo
-ENV VLA_PORT=50051
 
 EXPOSE 50051
 
-CMD ["python3", "-m", "ad_stack.server"]
+CMD ["python", "-m", "ad_stack.server"]

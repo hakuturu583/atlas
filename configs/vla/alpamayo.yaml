@@ -1,0 +1,44 @@
+# Alpamayo-R1-10B VLAモデル設定
+
+defaults:
+  - base
+  - _self_
+
+name: alpamayo
+
+# CUDAベースイメージ
+base_image: nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+# Pythonインストールが必要（CUDAイメージにはPythonが含まれていない）
+install_python: true
+python_version: "3.10"
+
+# ML依存関係
+dependencies:
+  ml:
+    - torch>=2.1.0
+    - transformers>=4.35.0
+    - accelerate>=0.25.0
+    - sentencepiece>=0.1.99
+    - einops>=0.7.0
+
+# 追加コピー
+copy_paths:
+  - src: ad_stack/models/alpamayo.py
+    dst: /app/ad_stack/models/alpamayo.py
+
+# 環境変数
+environment:
+  VLA_MODEL: alpamayo
+  HF_HOME: /app/.cache/huggingface
+
+# GPU設定
+gpu:
+  enabled: true
+  runtime: nvidia
+
+# モデル設定
+model:
+  id: nvidia/Alpamayo-R1-10B
+  device: cuda
+  cache_dir: /app/.cache/huggingface

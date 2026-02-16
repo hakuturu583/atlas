@@ -1,0 +1,16 @@
+# ダミーVLAモデル設定
+
+defaults:
+  - base
+  - _self_
+
+name: dummy
+
+# 追加コピー
+copy_paths:
+  - src: ad_stack/models/dummy.py
+    dst: /app/ad_stack/models/dummy.py
+
+# 環境変数
+environment:
+  VLA_MODEL: dummy

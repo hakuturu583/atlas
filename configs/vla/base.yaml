@@ -1,0 +1,53 @@
+# VLA Docker共通設定
+
+name: base
+python_version: "3.10"
+base_image: python:3.10-slim
+
+# システムパッケージ
+system_packages:
+  - wget
+  - curl
+  - git
+
+# Python依存関係（グループ化）
+dependencies:
+  common:
+    - grpcio>=1.60.0
+    - grpcio-tools>=1.60.0
+    - protobuf>=4.25.0
+    - pillow>=10.0.0
+
+# コピーするファイル/ディレクトリ
+copy_paths:
+  - src: generated/grpc_pb2
+    dst: /app/generated/grpc_pb2
+  - src: ad_stack/common
+    dst: /app/ad_stack/common
+  - src: ad_stack/models/base.py
+    dst: /app/ad_stack/models/base.py
+  - src: ad_stack/server.py
+    dst: /app/ad_stack/server.py
+
+# 作成する空ファイル（Pythonパッケージ化）
+touch_files:
+  - /app/ad_stack/__init__.py
+  - /app/ad_stack/models/__init__.py
+  - /app/ad_stack/common/__init__.py
+
+# 環境変数
+environment:
+  PYTHONPATH: /app
+  VLA_PORT: 50051
+  VLA_MAX_WORKERS: 10
+
+# gRPCヘルスプローブ
+grpc_health_probe:
+  enabled: true
+  version: v0.4.19
+
+# ポート
+port: 50051
+
+# コマンド
+cmd: ["python", "-m", "ad_stack.server"]

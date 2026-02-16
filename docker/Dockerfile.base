@@ -1,40 +1,83 @@
 # ========================================
-# 共通ベースイメージ
-# gRPC通信コードと依存関係を含む
+# Auto-generated Dockerfile for VLA: base
+# DO NOT EDIT MANUALLY - Edit configs/vla/base.yaml instead
+# Generated from templates/Dockerfile.jinja2
 # ========================================
+
 FROM python:3.10-slim
 
 WORKDIR /app
 
-# システム依存関係
+
+
+# Install system packages
+
 RUN apt-get update && apt-get install -y \
+
     wget \
+
     curl \
+
+    git \
+
     && rm -rf /var/lib/apt/lists/*
 
-# Python依存関係（共通）
-COPY docker/requirements-base.txt /tmp/
-RUN pip install --no-cache-dir -r /tmp/requirements-base.txt
 
-# gRPC生成コードをコピー
+# Install Python dependencies
+
+# common dependencies
+RUN pip install --no-cache-dir \
+
+    grpcio>=1.60.0 \
+
+    grpcio-tools>=1.60.0 \
+
+    protobuf>=4.25.0 \
+
+    pillow>=10.0.0
+
+
+
+
+# Copy files
+
 COPY generated/grpc_pb2 /app/generated/grpc_pb2
 
-# ad_stack共通コードをコピー
 COPY ad_stack/common /app/ad_stack/common
+
 COPY ad_stack/models/base.py /app/ad_stack/models/base.py
+
+COPY ad_stack/server.py /app/ad_stack/server.py
+
+
+# Create Python package files
+
+
 RUN touch /app/ad_stack/__init__.py
+
 RUN touch /app/ad_stack/models/__init__.py
+
 RUN touch /app/ad_stack/common/__init__.py
 
-# gRPCヘルスプローブ
+
+
+
+# Install gRPC health probe
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
     wget -qO/bin/grpc_health_probe \
     https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
     chmod +x /bin/grpc_health_probe
 
+
+# Set environment variables
+
 ENV PYTHONPATH=/app
+
+ENV VLA_PORT=50051
+
+ENV VLA_MAX_WORKERS=10
+
 
 EXPOSE 50051
 
-# デフォルトコマンド（子イメージでオーバーライド）
 CMD ["python", "-m", "ad_stack.server"]

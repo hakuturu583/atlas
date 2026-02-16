@@ -1,15 +1,79 @@
 # ========================================
-# ダミーVLAモデル用イメージ
-# 共通ベースイメージ + ダミー実装
+# Auto-generated Dockerfile for VLA: dummy
+# DO NOT EDIT MANUALLY - Edit configs/vla/dummy.yaml instead
+# Generated from templates/Dockerfile.jinja2
 # ========================================
-FROM atlas-vla-base:latest
 
-# ダミーモデル実装をコピー
-COPY ad_stack/models/dummy.py /app/ad_stack/models/
-COPY ad_stack/server.py /app/ad_stack/
+FROM python:3.10-slim
 
-# 環境変数
-ENV VLA_MODEL=dummy
+WORKDIR /app
+
+
+
+# Install system packages
+
+RUN apt-get update && apt-get install -y \
+
+    wget \
+
+    curl \
+
+    git \
+
+    && rm -rf /var/lib/apt/lists/*
+
+
+# Install Python dependencies
+
+# common dependencies
+RUN pip install --no-cache-dir \
+
+    grpcio>=1.60.0 \
+
+    grpcio-tools>=1.60.0 \
+
+    protobuf>=4.25.0 \
+
+    pillow>=10.0.0
+
+
+
+
+# Copy files
+
+COPY ad_stack/models/dummy.py /app/ad_stack/models/dummy.py
+
+
+# Create Python package files
+
+
+RUN touch /app/ad_stack/__init__.py
+
+RUN touch /app/ad_stack/models/__init__.py
+
+RUN touch /app/ad_stack/common/__init__.py
+
+
+
+
+# Install gRPC health probe
+RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
+    wget -qO/bin/grpc_health_probe \
+    https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
+    chmod +x /bin/grpc_health_probe
+
+
+# Set environment variables
+
+ENV PYTHONPATH=/app
+
 ENV VLA_PORT=50051
+
+ENV VLA_MAX_WORKERS=10
+
+ENV VLA_MODEL=dummy
+
+
+EXPOSE 50051
 
 CMD ["python", "-m", "ad_stack.server"]
