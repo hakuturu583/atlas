@@ -57,6 +57,7 @@
           - "--exclude=data/videos"
           - "--exclude=data/rerun"
           - "--exclude=sandbox/workspace"
+      become: false
       tags: [setup, transfer]
 
     - name: Set ownership of project files
