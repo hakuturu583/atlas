@@ -10,9 +10,7 @@
   gather_facts: true
 
   vars:
-    atlas_project_dir: "{{ atlas_project_dir | default('/opt/atlas') }}"
-    atlas_stack_name: "{{ atlas_stack_name | default('atlas') }}"
-    local_registry_port: "{{ local_registry_port | default('5000') }}"
+    # Note: atlas_project_dir, atlas_stack_name, local_registry_port are defined in inventory
     deploy_scenario: "{{ deploy_scenario | default(false) | bool }}"
     deploy_ad_stack: "{{ deploy_ad_stack | default(false) | bool }}"
     build_alpamayo: "{{ build_alpamayo | default(false) | bool }}"
