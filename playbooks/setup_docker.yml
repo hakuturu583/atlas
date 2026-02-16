@@ -15,12 +15,28 @@
 
   tasks:
     # ========================================
+    # Check if Docker is already installed
+    # ========================================
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_installed
+      failed_when: false
+      changed_when: false
+      tags: [check, docker]
+
+    - name: Display Docker installation status
+      debug:
+        msg: "Docker is already installed: {{ docker_installed.stdout | default('Not installed') }}"
+      tags: [check, docker]
+
+    # ========================================
     # System Preparation
     # ========================================
     - name: Update apt cache
       apt:
         update_cache: yes
         cache_valid_time: 3600
+      when: docker_installed.rc != 0
       tags: [setup, update]
 
     - name: Install dependencies
@@ -33,21 +49,48 @@
           - lsb-release
           - software-properties-common
         state: present
+      when: docker_installed.rc != 0
       tags: [setup, dependencies]
 
     # ========================================
     # Docker Repository Setup
     # ========================================
-    - name: Add Docker GPG key
-      apt_key:
+    - name: Create keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      when: docker_installed.rc != 0
+      tags: [setup, docker]
+
+    - name: Remove old Docker GPG key (if exists)
+      file:
+        path: /etc/apt/keyrings/docker.asc
+        state: absent
+      when: docker_installed.rc != 0
+      tags: [setup, docker]
+
+    - name: Download Docker GPG key
+      get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+      when: docker_installed.rc != 0
+      tags: [setup, docker]
+
+    - name: Remove old Docker repository (if exists)
+      file:
+        path: /etc/apt/sources.list.d/docker.list
+        state: absent
+      when: docker_installed.rc != 0
       tags: [setup, docker]
 
     - name: Add Docker repository
       apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
         state: present
+        filename: docker
+      when: docker_installed.rc != 0
       tags: [setup, docker]
 
     # ========================================
@@ -63,6 +106,7 @@
           - docker-compose-plugin
         state: present
         update_cache: yes
+      when: docker_installed.rc != 0
       tags: [install, docker]
 
     - name: Start and enable Docker service
@@ -109,15 +153,29 @@
     # ========================================
     # NVIDIA Docker (Optional)
     # ========================================
-    - name: Check if NVIDIA GPU exists
-      command: lspci | grep -i nvidia
-      register: nvidia_gpu
+    - name: Check if NVIDIA Docker is installed
+      command: dpkg -l nvidia-docker2
+      register: nvidia_docker_installed
       failed_when: false
       changed_when: false
       when: install_nvidia_docker
       tags: [check, gpu]
 
-    - name: Install NVIDIA Docker (if GPU detected)
+    - name: Check if NVIDIA GPU exists
+      command: lspci | grep -i nvidia
+      register: nvidia_gpu
+      failed_when: false
+      changed_when: false
+      when: install_nvidia_docker and nvidia_docker_installed.rc != 0
+      tags: [check, gpu]
+
+    - name: Display NVIDIA GPU detection result
+      debug:
+        msg: "NVIDIA GPU detected: {{ 'Yes' if nvidia_gpu.rc == 0 else 'No' }}"
+      when: install_nvidia_docker and nvidia_docker_installed.rc != 0
+      tags: [check, gpu]
+
+    - name: Install NVIDIA Docker (if GPU detected and not installed)
       block:
         - name: Add NVIDIA Docker GPG key
           apt_key:
@@ -144,7 +202,13 @@
           systemd:
             name: docker
             state: restarted
-      when: install_nvidia_docker and nvidia_gpu.rc == 0
+      when: install_nvidia_docker and nvidia_docker_installed.rc != 0 and nvidia_gpu.rc == 0
+      tags: [install, gpu]
+
+    - name: Skip NVIDIA Docker installation (already installed)
+      debug:
+        msg: "NVIDIA Docker is already installed, skipping installation"
+      when: install_nvidia_docker and nvidia_docker_installed.rc == 0
       tags: [install, gpu]
 
     # ========================================
@@ -152,24 +216,49 @@
     # ========================================
     - name: Verify Docker installation
       command: docker --version
-      register: docker_version
+      register: docker_version_final
       changed_when: false
       tags: [verify, docker]
 
     - name: Display Docker version
       debug:
-        msg: "Docker version: {{ docker_version.stdout }}"
+        msg: "✓ Docker version: {{ docker_version_final.stdout }}"
+      tags: [verify, docker]
+
+    - name: Verify Docker Compose plugin
+      command: docker compose version
+      register: docker_compose_version
+      changed_when: false
+      failed_when: false
+      tags: [verify, docker]
+
+    - name: Display Docker Compose version
+      debug:
+        msg: "✓ Docker Compose version: {{ docker_compose_version.stdout }}"
+      when: docker_compose_version.rc == 0
+      tags: [verify, docker]
+
+    - name: Check Docker service status
+      systemd:
+        name: docker
+      register: docker_service
+      tags: [verify, docker]
+
+    - name: Display Docker service status
+      debug:
+        msg: "✓ Docker service is {{ docker_service.status.ActiveState }}"
       tags: [verify, docker]
 
     - name: Test Docker (run hello-world)
       command: docker run --rm hello-world
       register: docker_test
       changed_when: false
+      failed_when: false
       tags: [verify, docker, test]
 
     - name: Display Docker test result
       debug:
-        msg: "{{ docker_test.stdout }}"
+        msg: "✓ Docker test: {{ 'PASSED' if docker_test.rc == 0 else 'FAILED' }}"
       tags: [verify, docker, test]
 
   handlers:
