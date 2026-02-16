@@ -40,9 +40,9 @@ class NodeConfig(BaseModel):
         default=None, description="Path to SSH private key"
     )
     use_password: bool = Field(default=False, description="Use password authentication")
-    ssh_password: Optional[str] = Field(
-        default=None,
-        description="SSH password (sensitive, handle with care)",
+    ssh_password: str = Field(
+        ...,
+        description="SSH password (also used for sudo, required for deployment)",
     )
 
     # Node capabilities

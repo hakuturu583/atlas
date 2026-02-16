@@ -81,11 +81,11 @@ class ClusterManager:
         if manager.ssh_key_path:
             manager_line += f" ansible_ssh_private_key_file={manager.ssh_key_path}"
             logger.debug(f"Manager: Using SSH key authentication")
-        if manager.use_password and manager.ssh_password:
-            manager_line += f" ansible_ssh_pass={manager.ssh_password}"
-            logger.debug(f"Manager: Using password authentication (password provided)")
-        elif manager.use_password and not manager.ssh_password:
-            logger.warning(f"Manager: Password authentication enabled but no password provided!")
+        # SSH password (required)
+        manager_line += f" ansible_ssh_pass={manager.ssh_password}"
+        # Sudo password (same as SSH password)
+        manager_line += f" ansible_become_pass={manager.ssh_password}"
+        logger.debug(f"Manager: Password authentication configured")
         lines.append(manager_line)
         lines.append("")
 
@@ -102,11 +102,11 @@ class ClusterManager:
                 if worker.ssh_key_path:
                     worker_line += f" ansible_ssh_private_key_file={worker.ssh_key_path}"
                     logger.debug(f"Worker {worker.hostname}: Using SSH key authentication")
-                if worker.use_password and worker.ssh_password:
-                    worker_line += f" ansible_ssh_pass={worker.ssh_password}"
-                    logger.debug(f"Worker {worker.hostname}: Using password authentication (password provided)")
-                elif worker.use_password and not worker.ssh_password:
-                    logger.warning(f"Worker {worker.hostname}: Password authentication enabled but no password provided!")
+                # SSH password (required)
+                worker_line += f" ansible_ssh_pass={worker.ssh_password}"
+                # Sudo password (same as SSH password)
+                worker_line += f" ansible_become_pass={worker.ssh_password}"
+                logger.debug(f"Worker {worker.hostname}: Password authentication configured")
                 if worker.has_gpu:
                     worker_line += " gpu=true"
                 if worker.is_carla_host:

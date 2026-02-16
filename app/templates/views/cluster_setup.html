@@ -155,16 +155,17 @@
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              SSHパスワード（パスワード認証の場合）
+              SSHパスワード <span class="text-red-500">*</span>
             </label>
             <input
               type="password"
               id="manager-password"
               placeholder="パスワードを入力"
               class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              required
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              ⚠️ セキュリティのため、パスワードはファイルに保存されません
+              🔐 SSH接続とsudoコマンドに使用されます（ファイルには保存されません）
             </p>
           </div>
         </div>
@@ -363,13 +364,17 @@ function addWorkerNode() {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            SSHパスワード
+            SSHパスワード <span class="text-red-500">*</span>
           </label>
           <input
             type="password"
             class="worker-password w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white text-sm"
             placeholder="パスワード"
+            required
           />
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            🔐 SSH接続とsudoに使用
+          </p>
         </div>
       </div>
 
