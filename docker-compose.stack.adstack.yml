@@ -41,11 +41,6 @@ services:
         limits:
           cpus: "8"
           memory: 16G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -64,7 +59,10 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - CUDA_VISIBLE_DEVICES=0
     volumes:
-      - huggingface-cache:/app/.cache/huggingface
+      - type: bind
+        source: /home/masaya/.cache/huggingface
+        target: /app/.cache/huggingface
+        read_only: true
     healthcheck:
       test: ["CMD", "/bin/grpc_health_probe", "-addr=:50051"]
       interval: 10s
@@ -76,7 +74,3 @@ networks:
   atlas-network:
     external: true
     name: atlas_atlas-network
-
-volumes:
-  huggingface-cache:
-    driver: local
