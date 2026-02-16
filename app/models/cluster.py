@@ -40,6 +40,11 @@ class NodeConfig(BaseModel):
         default=None, description="Path to SSH private key"
     )
     use_password: bool = Field(default=False, description="Use password authentication")
+    ssh_password: Optional[str] = Field(
+        default=None,
+        description="SSH password (not saved to file for security)",
+        exclude=True,  # Exclude from JSON serialization
+    )
 
     # Node capabilities
     has_gpu: bool = Field(default=False, description="Node has NVIDIA GPU")

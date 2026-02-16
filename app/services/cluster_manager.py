@@ -80,6 +80,8 @@ class ClusterManager:
         )
         if manager.ssh_key_path:
             manager_line += f" ansible_ssh_private_key_file={manager.ssh_key_path}"
+        if manager.use_password and manager.ssh_password:
+            manager_line += f" ansible_ssh_pass={manager.ssh_password}"
         lines.append(manager_line)
         lines.append("")
 
@@ -95,6 +97,8 @@ class ClusterManager:
                 )
                 if worker.ssh_key_path:
                     worker_line += f" ansible_ssh_private_key_file={worker.ssh_key_path}"
+                if worker.use_password and worker.ssh_password:
+                    worker_line += f" ansible_ssh_pass={worker.ssh_password}"
                 if worker.has_gpu:
                     worker_line += " gpu=true"
                 if worker.is_carla_host:

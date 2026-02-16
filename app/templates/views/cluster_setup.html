@@ -132,6 +132,42 @@
             />
           </div>
         </div>
+
+        <!-- SSH Authentication -->
+        <div class="mt-4 space-y-3">
+          <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">SSH認証</h4>
+          <div class="flex items-center space-x-2">
+            <input type="checkbox" id="manager-use-password" class="rounded" />
+            <label for="manager-use-password" class="text-sm text-gray-700 dark:text-gray-300">
+              パスワード認証を使用
+            </label>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              SSH秘密鍵パス（鍵認証の場合）
+            </label>
+            <input
+              type="text"
+              id="manager-key-path"
+              placeholder="~/.ssh/id_rsa"
+              class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              SSHパスワード（パスワード認証の場合）
+            </label>
+            <input
+              type="password"
+              id="manager-password"
+              placeholder="パスワードを入力"
+              class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              ⚠️ セキュリティのため、パスワードはファイルに保存されません
+            </p>
+          </div>
+        </div>
       </div>
 
       <!-- Worker Nodes -->
@@ -305,7 +341,40 @@ function addWorkerNode() {
             required
           />
         </div>
-        <div class="col-span-2">
+      </div>
+
+      <!-- SSH Authentication for Worker -->
+      <div class="mt-3 space-y-2">
+        <div class="flex items-center space-x-2">
+          <input type="checkbox" class="worker-use-password rounded" />
+          <label class="text-sm text-gray-700 dark:text-gray-300">
+            パスワード認証を使用
+          </label>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            SSH秘密鍵パス
+          </label>
+          <input
+            type="text"
+            class="worker-key-path w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white text-sm"
+            placeholder="~/.ssh/id_rsa"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            SSHパスワード
+          </label>
+          <input
+            type="password"
+            class="worker-password w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white text-sm"
+            placeholder="パスワード"
+          />
+        </div>
+      </div>
+
+      <div class="mt-3 grid grid-cols-2 gap-2">
+        <div>
           <label class="flex items-center space-x-2">
             <input type="checkbox" class="worker-gpu" />
             <span class="text-sm text-gray-700 dark:text-gray-300">GPU搭載</span>
@@ -343,6 +412,9 @@ function collectFormData() {
     role: 'manager',
     ssh_user: document.getElementById('manager-user').value,
     ssh_port: parseInt(document.getElementById('manager-port').value),
+    ssh_key_path: document.getElementById('manager-key-path').value || null,
+    use_password: document.getElementById('manager-use-password').checked,
+    ssh_password: document.getElementById('manager-password').value || null,
     has_gpu: false,
     is_carla_host: false,
     has_storage: false,
@@ -359,6 +431,9 @@ function collectFormData() {
       role: 'worker',
       ssh_user: node.querySelector('.worker-user').value,
       ssh_port: parseInt(node.querySelector('.worker-port').value),
+      ssh_key_path: node.querySelector('.worker-key-path').value || null,
+      use_password: node.querySelector('.worker-use-password').checked,
+      ssh_password: node.querySelector('.worker-password').value || null,
       has_gpu: node.querySelector('.worker-gpu').checked,
       is_carla_host: node.querySelector('.worker-carla').checked,
       has_storage: node.querySelector('.worker-storage').checked,
