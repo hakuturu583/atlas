@@ -58,6 +58,9 @@ RUN pip3 install --no-cache-dir \
 
     einops>=0.7.0
 
+# Install uv build tool (required for alpamayo)
+RUN pip3 install --no-cache-dir uv
+
 # Install alpamayo_r1 from official repository
 RUN pip3 install --no-cache-dir \
     git+https://github.com/NVlabs/alpamayo.git
