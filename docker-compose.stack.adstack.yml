@@ -60,7 +60,7 @@ services:
       - CUDA_VISIBLE_DEVICES=0
     volumes:
       - type: bind
-        source: ${HOME}/.cache/huggingface
+        source: ${HF_HOME:-${HOME}/.cache/huggingface}
         target: /app/.cache/huggingface
         read_only: true
     healthcheck:
