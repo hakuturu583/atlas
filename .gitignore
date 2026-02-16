@@ -63,6 +63,11 @@ scenarios/*.py
 # Generated gRPC code
 generated/
 
+# Ansible
+.ansible/
+*.retry
+inventory.ini
+
 # Keep directory structure and examples
 !data/scenarios/.gitkeep
 !data/rerun/.gitkeep

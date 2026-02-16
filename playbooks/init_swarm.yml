@@ -1,0 +1,142 @@
+---
+# ========================================
+# Docker Swarm Initialization
+# Initializes Swarm on manager node and generates join token
+# ========================================
+
+- name: Initialize Docker Swarm
+  hosts: manager
+  become: true
+  gather_facts: true
+
+  vars:
+    swarm_token_file: "{{ playbook_dir }}/../.ansible/swarm_token.txt"
+
+  tasks:
+    # ========================================
+    # Pre-check
+    # ========================================
+    - name: Check if Swarm is already initialized
+      command: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+      register: swarm_status
+      changed_when: false
+      tags: [check, swarm]
+
+    - name: Display current Swarm status
+      debug:
+        msg: "Swarm status: {{ swarm_status.stdout }}"
+      tags: [check, swarm]
+
+    # ========================================
+    # Swarm Initialization
+    # ========================================
+    - name: Initialize Docker Swarm
+      command: >
+        docker swarm init
+        --advertise-addr {{ ansible_default_ipv4.address }}
+      when: swarm_status.stdout != "active"
+      register: swarm_init
+      tags: [init, swarm]
+
+    - name: Display Swarm initialization result
+      debug:
+        msg: "{{ swarm_init.stdout }}"
+      when: swarm_init is changed
+      tags: [init, swarm]
+
+    # ========================================
+    # Generate Worker Join Token
+    # ========================================
+    - name: Get worker join token
+      command: docker swarm join-token worker -q
+      register: worker_token
+      changed_when: false
+      tags: [token, swarm]
+
+    - name: Create .ansible directory
+      file:
+        path: "{{ playbook_dir }}/../.ansible"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: false
+      tags: [token, swarm]
+
+    - name: Save worker join token to file
+      copy:
+        content: |
+          SWARM_MANAGER_IP={{ ansible_default_ipv4.address }}
+          SWARM_WORKER_TOKEN={{ worker_token.stdout }}
+          SWARM_JOIN_COMMAND=docker swarm join --token {{ worker_token.stdout }} {{ ansible_default_ipv4.address }}:2377
+        dest: "{{ swarm_token_file }}"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+      tags: [token, swarm]
+
+    - name: Display join command
+      debug:
+        msg: |
+          Worker nodes can join with:
+          docker swarm join --token {{ worker_token.stdout }} {{ ansible_default_ipv4.address }}:2377
+      tags: [token, swarm]
+
+    # ========================================
+    # Node Labeling
+    # ========================================
+    - name: Get manager node ID
+      command: docker node ls --filter role=manager --format '{{ '{{' }}.ID{{ '}}' }}'
+      register: manager_node_id
+      changed_when: false
+      tags: [label, swarm]
+
+    - name: Label manager node
+      command: docker node update --label-add role=manager {{ manager_node_id.stdout }}
+      when: manager_node_id.stdout != ""
+      tags: [label, swarm]
+
+    # ========================================
+    # Create Networks
+    # ========================================
+    - name: Create overlay network for ATLAS
+      command: >
+        docker network create
+        --driver overlay
+        --attachable
+        atlas-network
+      register: network_create
+      failed_when: false
+      changed_when: network_create.rc == 0
+      tags: [network, swarm]
+
+    # ========================================
+    # Verification
+    # ========================================
+    - name: List Swarm nodes
+      command: docker node ls
+      register: node_list
+      changed_when: false
+      tags: [verify, swarm]
+
+    - name: Display Swarm nodes
+      debug:
+        msg: "{{ node_list.stdout_lines }}"
+      tags: [verify, swarm]
+
+    - name: Display success message
+      debug:
+        msg: |
+          ========================================
+          Docker Swarm initialized successfully!
+          ========================================
+
+          Manager node: {{ ansible_default_ipv4.address }}
+
+          Join token saved to: {{ swarm_token_file }}
+
+          To join worker nodes, run:
+            ansible-playbook playbooks/join_swarm.yml
+
+          Or manually on each worker:
+            docker swarm join --token {{ worker_token.stdout }} {{ ansible_default_ipv4.address }}:2377
+      tags: [verify, swarm]

@@ -1,0 +1,163 @@
+---
+# ========================================
+# Docker Swarm Join
+# Joins worker nodes to the Swarm cluster
+# ========================================
+
+- name: Join Worker Nodes to Docker Swarm
+  hosts: workers
+  become: true
+  gather_facts: true
+
+  vars:
+    swarm_token_file: "{{ playbook_dir }}/../.ansible/swarm_token.txt"
+
+  tasks:
+    # ========================================
+    # Load Join Token
+    # ========================================
+    - name: Check if join token file exists
+      stat:
+        path: "{{ swarm_token_file }}"
+      register: token_file
+      delegate_to: localhost
+      become: false
+      tags: [check, token]
+
+    - name: Fail if token file not found
+      fail:
+        msg: |
+          Join token file not found: {{ swarm_token_file }}
+          Please run 'ansible-playbook playbooks/init_swarm.yml' first.
+      when: not token_file.stat.exists
+      tags: [check, token]
+
+    - name: Read join token from file
+      slurp:
+        src: "{{ swarm_token_file }}"
+      register: token_content
+      delegate_to: localhost
+      become: false
+      tags: [check, token]
+
+    - name: Parse join token
+      set_fact:
+        swarm_manager_ip: "{{ (token_content.content | b64decode | regex_search('SWARM_MANAGER_IP=(.*)', '\\1'))[0] }}"
+        swarm_worker_token: "{{ (token_content.content | b64decode | regex_search('SWARM_WORKER_TOKEN=(.*)', '\\1'))[0] }}"
+      tags: [check, token]
+
+    # ========================================
+    # Pre-check
+    # ========================================
+    - name: Check if node is already in Swarm
+      command: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+      register: swarm_status
+      changed_when: false
+      tags: [check, swarm]
+
+    - name: Display current Swarm status
+      debug:
+        msg: "Node {{ inventory_hostname }} swarm status: {{ swarm_status.stdout }}"
+      tags: [check, swarm]
+
+    # ========================================
+    # Join Swarm
+    # ========================================
+    - name: Join Swarm as worker
+      command: >
+        docker swarm join
+        --token {{ swarm_worker_token }}
+        {{ swarm_manager_ip }}:2377
+      when: swarm_status.stdout != "active"
+      register: swarm_join
+      tags: [join, swarm]
+
+    - name: Display join result
+      debug:
+        msg: "{{ swarm_join.stdout }}"
+      when: swarm_join is changed
+      tags: [join, swarm]
+
+    # ========================================
+    # Verification
+    # ========================================
+    - name: Verify node joined Swarm
+      command: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+      register: verify_status
+      changed_when: false
+      tags: [verify, swarm]
+
+    - name: Display verification result
+      debug:
+        msg: "Node {{ inventory_hostname }} successfully joined Swarm (status: {{ verify_status.stdout }})"
+      when: verify_status.stdout == "active"
+      tags: [verify, swarm]
+
+# ========================================
+# Label Nodes (run on manager)
+# ========================================
+- name: Label Worker Nodes
+  hosts: manager
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Get all node IDs and hostnames
+      command: docker node ls --format '{{ '{{' }}.ID{{ '}}' }} {{ '{{' }}.Hostname{{ '}}' }}'
+      register: node_list
+      changed_when: false
+      tags: [label, swarm]
+
+    - name: Parse node list
+      set_fact:
+        node_map: "{{ node_map | default({}) | combine({item.split()[1]: item.split()[0]}) }}"
+      loop: "{{ node_list.stdout_lines }}"
+      tags: [label, swarm]
+
+    - name: Label GPU nodes
+      command: docker node update --label-add gpu=true {{ node_map[hostvars[item].inventory_hostname_short] }}
+      loop: "{{ groups['workers'] }}"
+      when:
+        - hostvars[item].gpu | default(false)
+        - hostvars[item].inventory_hostname_short in node_map
+      tags: [label, gpu]
+
+    - name: Label CARLA nodes
+      command: docker node update --label-add carla=true {{ node_map[hostvars[item].inventory_hostname_short] }}
+      loop: "{{ groups['workers'] }}"
+      when:
+        - hostvars[item].carla | default(false)
+        - hostvars[item].inventory_hostname_short in node_map
+      tags: [label, carla]
+
+    - name: Label storage nodes
+      command: docker node update --label-add storage=true {{ node_map[hostvars[item].inventory_hostname_short] }}
+      loop: "{{ groups['workers'] }}"
+      when:
+        - hostvars[item].storage | default(false)
+        - hostvars[item].inventory_hostname_short in node_map
+      tags: [label, storage]
+
+    - name: Display final node list
+      command: docker node ls
+      register: final_node_list
+      changed_when: false
+      tags: [verify, swarm]
+
+    - name: Display all nodes
+      debug:
+        msg: "{{ final_node_list.stdout_lines }}"
+      tags: [verify, swarm]
+
+    - name: Display success message
+      debug:
+        msg: |
+          ========================================
+          Worker nodes joined successfully!
+          ========================================
+
+          All nodes are now part of the Swarm cluster.
+
+          To deploy ATLAS, run:
+            ansible-playbook playbooks/deploy_atlas.yml
+      tags: [verify, swarm]

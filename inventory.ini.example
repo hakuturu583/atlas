@@ -1,0 +1,36 @@
+# Ansible Inventory for ATLAS Cluster
+#
+# Copy this file to inventory.ini and update with your actual hosts
+# cp inventory.ini.example inventory.ini
+
+[manager]
+# Swarm manager node
+# Replace with your actual IP and user
+manager-node ansible_host=192.168.1.10 ansible_user=ubuntu
+
+[workers]
+# Worker nodes
+# Add gpu=true for nodes with NVIDIA GPU
+# Add carla=true for preferred CARLA host
+# Add storage=true for nodes with large storage
+worker-node-1 ansible_host=192.168.1.11 ansible_user=ubuntu gpu=true
+worker-node-2 ansible_host=192.168.1.12 ansible_user=ubuntu
+
+# Example additional worker with GPU
+# worker-node-3 ansible_host=192.168.1.13 ansible_user=ubuntu gpu=true carla=true
+
+[all:vars]
+# Python interpreter path
+ansible_python_interpreter=/usr/bin/python3
+
+# SSH settings
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+# Docker registry (optional, for private registries)
+# docker_registry_url=registry.example.com:5000
+# docker_registry_user=username
+# docker_registry_password=password
+
+# ATLAS configuration
+atlas_stack_name=atlas
+atlas_project_dir=/opt/atlas

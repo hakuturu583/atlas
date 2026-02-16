@@ -1,0 +1,260 @@
+---
+# ========================================
+# ATLAS Stack Deployment
+# Deploys ATLAS (CARLA + Scenario + VLA) to Docker Swarm
+# ========================================
+
+- name: Deploy ATLAS Stack to Docker Swarm
+  hosts: manager
+  become: true
+  gather_facts: true
+
+  vars:
+    atlas_project_dir: "{{ atlas_project_dir | default('/opt/atlas') }}"
+    atlas_stack_name: "{{ atlas_stack_name | default('atlas') }}"
+    local_registry_port: "{{ local_registry_port | default('5000') }}"
+    build_alpamayo: "{{ build_alpamayo | default(false) }}"
+
+  tasks:
+    # ========================================
+    # Pre-check
+    # ========================================
+    - name: Check if Swarm is active
+      command: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+      register: swarm_status
+      changed_when: false
+      tags: [check, swarm]
+
+    - name: Fail if Swarm is not active
+      fail:
+        msg: "Docker Swarm is not active. Please run 'ansible-playbook playbooks/init_swarm.yml' first."
+      when: swarm_status.stdout != "active"
+      tags: [check, swarm]
+
+    # ========================================
+    # Project Transfer
+    # ========================================
+    - name: Create project directory
+      file:
+        path: "{{ atlas_project_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      tags: [setup, transfer]
+
+    - name: Sync project files to manager node
+      synchronize:
+        src: "{{ playbook_dir }}/../"
+        dest: "{{ atlas_project_dir }}/"
+        delete: no
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=.venv"
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+          - "--exclude=data/logs"
+          - "--exclude=data/videos"
+          - "--exclude=data/rerun"
+          - "--exclude=sandbox/workspace"
+      tags: [setup, transfer]
+
+    - name: Set ownership of project files
+      file:
+        path: "{{ atlas_project_dir }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: yes
+      tags: [setup, transfer]
+
+    # ========================================
+    # Local Registry Setup
+    # ========================================
+    - name: Check if local registry is running
+      command: docker ps --filter "name=registry" --filter "status=running" --format '{{ '{{' }}.Names{{ '}}' }}'
+      register: registry_status
+      changed_when: false
+      tags: [check, registry]
+
+    - name: Start local Docker registry
+      command: >
+        docker run -d
+        --name registry
+        --restart=always
+        -p {{ local_registry_port }}:5000
+        registry:2
+      when: registry_status.stdout == ""
+      tags: [setup, registry]
+
+    - name: Wait for registry to be ready
+      wait_for:
+        host: localhost
+        port: "{{ local_registry_port }}"
+        delay: 2
+        timeout: 30
+      tags: [setup, registry]
+
+    # ========================================
+    # Generate gRPC Code
+    # ========================================
+    - name: Generate gRPC code
+      command: make generate-grpc
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/bin"
+      tags: [build, grpc]
+
+    # ========================================
+    # Generate Dockerfiles
+    # ========================================
+    - name: Generate VLA Dockerfiles from templates
+      command: python3 scripts/generate_dockerfiles.py
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      environment:
+        PYTHONPATH: "{{ atlas_project_dir }}"
+      tags: [build, dockerfile]
+
+    # ========================================
+    # Build and Push Images
+    # ========================================
+    - name: Build base VLA image
+      command: >
+        docker build
+        -t atlas-vla-base:latest
+        -f docker/Dockerfile.base
+        .
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      tags: [build, images]
+
+    - name: Build dummy VLA image
+      command: >
+        docker build
+        -t atlas-vla-dummy:latest
+        -f docker/Dockerfile.dummy
+        .
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      tags: [build, images]
+
+    - name: Tag and push dummy VLA image to local registry
+      shell: |
+        docker tag atlas-vla-dummy:latest localhost:{{ local_registry_port }}/atlas-vla-dummy:latest
+        docker push localhost:{{ local_registry_port }}/atlas-vla-dummy:latest
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      tags: [build, images]
+
+    - name: Build Alpamayo VLA image (if requested)
+      command: >
+        docker build
+        -t atlas-vla-alpamayo:latest
+        -f docker/Dockerfile.alpamayo
+        .
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      when: build_alpamayo
+      tags: [build, images, alpamayo]
+
+    - name: Tag and push Alpamayo VLA image (if built)
+      shell: |
+        docker tag atlas-vla-alpamayo:latest localhost:{{ local_registry_port }}/atlas-vla-alpamayo:latest
+        docker push localhost:{{ local_registry_port }}/atlas-vla-alpamayo:latest
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      when: build_alpamayo
+      tags: [build, images, alpamayo]
+
+    - name: Build scenario execution image
+      command: >
+        docker build
+        -t atlas-scenario:latest
+        -f docker/Dockerfile.scenario
+        .
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      tags: [build, images]
+
+    - name: Tag and push scenario image to local registry
+      shell: |
+        docker tag atlas-scenario:latest localhost:{{ local_registry_port }}/atlas-scenario:latest
+        docker push localhost:{{ local_registry_port }}/atlas-scenario:latest
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      tags: [build, images]
+
+    # ========================================
+    # Deploy Stack
+    # ========================================
+    - name: Label GPU nodes
+      command: docker node update --label-add gpu=true {{ item }}
+      loop: "{{ groups['workers'] | default([]) }}"
+      when: hostvars[item].gpu | default(false)
+      failed_when: false
+      tags: [deploy, labels]
+
+    - name: Deploy ATLAS stack
+      command: >
+        docker stack deploy
+        -c docker-compose.stack.yml
+        {{ atlas_stack_name }}
+      args:
+        chdir: "{{ atlas_project_dir }}"
+      tags: [deploy, stack]
+
+    # ========================================
+    # Verification
+    # ========================================
+    - name: Wait for services to start
+      pause:
+        seconds: 10
+      tags: [verify, stack]
+
+    - name: List stack services
+      command: docker stack services {{ atlas_stack_name }}
+      register: services_list
+      changed_when: false
+      tags: [verify, stack]
+
+    - name: Display services
+      debug:
+        msg: "{{ services_list.stdout_lines }}"
+      tags: [verify, stack]
+
+    - name: Check service status
+      command: docker stack ps {{ atlas_stack_name }} --no-trunc
+      register: stack_ps
+      changed_when: false
+      tags: [verify, stack]
+
+    - name: Display stack status
+      debug:
+        msg: "{{ stack_ps.stdout_lines }}"
+      tags: [verify, stack]
+
+    - name: Display success message
+      debug:
+        msg: |
+          ========================================
+          ATLAS Stack deployed successfully!
+          ========================================
+
+          Stack name: {{ atlas_stack_name }}
+          Project directory: {{ atlas_project_dir }}
+
+          View services:
+            docker stack services {{ atlas_stack_name }}
+
+          View logs:
+            docker service logs -f {{ atlas_stack_name }}_scenario
+            docker service logs -f {{ atlas_stack_name }}_ad-stack-dummy
+
+          Run scenario:
+            CONTAINER_ID=$(docker ps -qf "name={{ atlas_stack_name }}_scenario")
+            docker exec -it $CONTAINER_ID python examples/agent_controller_callback.py
+
+          Remove stack:
+            docker stack rm {{ atlas_stack_name }}
+      tags: [verify, stack]
