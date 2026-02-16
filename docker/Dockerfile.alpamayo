@@ -66,14 +66,11 @@ RUN pip3 install --no-cache-dir \
 COPY ad_stack/models/alpamayo.py /app/ad_stack/models/alpamayo.py
 
 
-# Create Python package files
-
-
-RUN touch /app/ad_stack/__init__.py
-
-RUN touch /app/ad_stack/models/__init__.py
-
-RUN touch /app/ad_stack/common/__init__.py
+# Create Python package files and directories
+RUN mkdir -p /app/ad_stack/models /app/ad_stack/common && \
+    touch /app/ad_stack/__init__.py && \
+    touch /app/ad_stack/models/__init__.py && \
+    touch /app/ad_stack/common/__init__.py
 
 
 

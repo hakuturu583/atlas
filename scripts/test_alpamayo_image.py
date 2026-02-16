@@ -15,10 +15,14 @@ import io
 import numpy as np
 
 # gRPC protobuf imports
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 try:
     from generated.grpc_pb2 import sensor_data_pb2, control_command_pb2, ad_stack_pb2_grpc
-except ImportError:
-    print("❌ Error: gRPC protobuf files not found. Run 'make generate-grpc' first.")
+except ImportError as e:
+    print(f"❌ Error: gRPC protobuf files not found: {e}")
+    print("Make sure you're running from the project root directory.")
     sys.exit(1)
 
 
