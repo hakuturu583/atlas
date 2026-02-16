@@ -24,6 +24,9 @@ dependencies = [
     "numpy>=1.26.0",
     "carla @ file:///home/masaya/workspace/atlas/carla_wheels/carla-0.10.0-cp312-cp312-linux_x86_64.whl",
     "dataclasses>=0.8",
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "protobuf>=4.25.0",
 ]
 
 [build-system]

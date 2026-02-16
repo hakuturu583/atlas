@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package atlas.control;
+
+// ============================================================================
+// VLA (Vision-Language-Action) Model Output Format
+// ============================================================================
+
+// Waypoint（目標経路点）
+// 自車座標系での目標位置・姿勢
+message Waypoint {
+  float x = 1;                       // X座標（前方方向、m）
+  float y = 2;                       // Y座標（左方向、m）
+  float z = 3;                       // Z座標（上方向、m）
+  repeated float rotation_matrix = 4; // 3x3回転行列（9要素、row-major）
+  float timestamp_offset_sec = 5;    // このwaypointまでの相対時刻（秒）
+  float speed_mps = 6;               // 目標速度（m/s）※オプション
+}
+
+// Waypoint系軌跡（Alpamayo, GAIA-1など）
+message WaypointTrajectory {
+  repeated Waypoint waypoints = 1;   // N個のwaypoints
+  float prediction_horizon_sec = 2;  // 予測時間（秒）
+  int32 sampling_rate_hz = 3;        // サンプリングレート（Hz）
+  string coordinate_frame = 4;       // 座標系（"ego", "world"）
+}
+
+// 離散アクション（RT-2, OpenVLAなど）
+message DiscreteAction {
+  int32 action_id = 1;               // アクションID
+  repeated string action_labels = 2; // アクション候補ラベル
+  repeated float action_probs = 3;   // 各アクションの確率
+  string action_space = 4;           // アクション空間名
+}
+
+// 連続アクション（低レベル制御系）
+message ContinuousAction {
+  repeated float action_values = 1;  // アクション値リスト
+  repeated string action_names = 2;  // 各値の名前（"throttle", "steer"など）
+  repeated float action_bounds_min = 3; // 最小値
+  repeated float action_bounds_max = 4; // 最大値
+}
+
+// VLA出力（抽象化されたインターフェース）
+message VLAOutput {
+  // 出力形式（oneofで型安全に切り替え）
+  oneof output_type {
+    WaypointTrajectory waypoint_trajectory = 1;  // Waypoint系
+    DiscreteAction discrete_action = 2;          // 離散アクション系
+    ContinuousAction continuous_action = 3;      // 連続アクション系
+  }
+
+  // 共通メタデータ
+  string model_name = 10;            // モデル名（"Alpamayo-R1-10B", "OpenVLA"など）
+  string model_version = 11;         // モデルバージョン
+  string reasoning_trace = 12;       // 推論トレース（Language出力）
+  int64 timestamp_ns = 13;           // 生成時刻（ナノ秒）
+
+  // 信頼度・メトリクス
+  float overall_confidence = 20;     // 全体信頼度 [0.0, 1.0]
+  map<string, float> confidence_scores = 21; // 詳細信頼度
+  map<string, float> metadata = 22;  // 追加メタデータ
+}
+
+// ============================================================================
+// Low-Level Control Commands (for CARLA)
+// ============================================================================
+
+// 低レベル車両制御コマンド（CARLAへの入力）
+// Alpamayoのwaypointから変換される
+message VehicleControlCommand {
+  float throttle = 1;                // スロットル [0.0, 1.0]
+  float steer = 2;                   // ステアリング [-1.0, 1.0] (左: -, 右: +)
+  float brake = 3;                   // ブレーキ [0.0, 1.0]
+  bool hand_brake = 4;               // ハンドブレーキ
+  bool reverse = 5;                  // リバースギア
+  int32 gear = 6;                    // 手動ギア (-1=R, 0=N, 1+=D) ※オプション
+  bool manual_gear_shift = 7;        // 手動ギアシフト有効化
+
+  // 元のwaypoint情報（トレーサビリティ用）
+  Waypoint target_waypoint = 8;      // 追従中の目標waypoint
+  string controller_type = 9;        // 使用コントローラー（"pure_pursuit", "stanley", "mpc"）
+}
+
+// ============================================================================
+// Control Response
+// ============================================================================
+
+// 制御応答（メトリクス含む）
+message ControlResponse {
+  bool success = 1;                  // 制御適用成否
+  string error_message = 2;          // エラーメッセージ（失敗時）
+  int64 processing_time_us = 3;      // AD Stack処理時間（マイクロ秒）
+  int64 timestamp_ns = 4;            // レスポンスタイムスタンプ（ナノ秒）
+
+  // パフォーマンスメトリクス
+  float inference_time_ms = 5;       // Alpamayo推論時間（ミリ秒）
+  float waypoint_conversion_time_ms = 6; // Waypoint→制御変換時間（ミリ秒）
+  float total_latency_ms = 7;        // 総レイテンシ（ミリ秒）
+
+  // デバッグ情報（オプション）
+  map<string, float> debug_info = 8; // 内部状態など
+}

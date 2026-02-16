@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package atlas.adstack;
+
+import "sensor_data.proto";
+import "control_command.proto";
+
+// VLA (Vision-Language-Action) サービス（Rep-Req型：決定性担保）
+service VLAService {
+  // センサーデータを受け取り、VLA出力を返す（ブロッキング呼び出し）
+  rpc ProcessSensorData(atlas.sensor.SensorDataBundle) returns (atlas.control.VLAOutput);
+
+  // バッチ処理版（複数フレームを一度に処理）
+  rpc ProcessSensorDataBatch(SensorDataBatchRequest) returns (SensorDataBatchResponse);
+
+  // ヘルスチェック
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // VLAモデルのリセット（新しいシナリオ開始時）
+  rpc Reset(ResetRequest) returns (ResetResponse);
+}
+
+// バッチリクエスト
+message SensorDataBatchRequest {
+  repeated atlas.sensor.SensorDataBundle bundles = 1;
+}
+
+// バッチレスポンス
+message SensorDataBatchResponse {
+  repeated atlas.control.VLAOutput vla_outputs = 1;     // VLA出力
+  repeated atlas.control.ControlResponse responses = 2; // 各フレームのメタ情報
+}
+
+// ヘルスチェックリクエスト
+message HealthCheckRequest {
+  string service_name = 1;
+}
+
+// ヘルスチェックレスポンス
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+  ServingStatus status = 1;
+  string version = 2;               // AD Stackバージョン
+  string model_name = 3;            // 使用モデル名（例: "Alpamayo-R1-10B"）
+  map<string, string> metadata = 4; // 追加情報
+}
+
+// リセットリクエスト
+message ResetRequest {
+  string scenario_id = 1;           // 新しいシナリオID
+  string model_name = 2;            // VLAモデル名（オプション）
+  map<string, string> config = 3;   // VLA設定（オプション）
+}
+
+// リセットレスポンス
+message ResetResponse {
+  bool success = 1;
+  string message = 2;
+}

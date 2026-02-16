@@ -1,4 +1,4 @@
-.PHONY: help run dev shutdown clean install test carla-launch carla-stop carla-status carla-config fiftyone fiftyone-batch fiftyone-list fiftyone-stop cleanup-dry cleanup cleanup-full
+.PHONY: help run dev shutdown clean install test carla-launch carla-stop carla-status carla-config fiftyone fiftyone-batch fiftyone-list fiftyone-stop cleanup-dry cleanup cleanup-full generate-grpc
 
 # デフォルトターゲット
 .DEFAULT_GOAL := help
@@ -18,6 +18,23 @@ help: ## このヘルプメッセージを表示
 install: ## 依存関係をインストール
 	@echo "📦 Installing dependencies..."
 	uv sync
+
+generate-grpc: install ## gRPCコードを生成
+	@echo "🔧 Generating gRPC code from .proto files..."
+	@mkdir -p generated/grpc_pb2
+	@uv run python -m grpc_tools.protoc \
+		-I./protos \
+		--python_out=./generated/grpc_pb2 \
+		--grpc_python_out=./generated/grpc_pb2 \
+		--pyi_out=./generated/grpc_pb2 \
+		./protos/sensor_data.proto \
+		./protos/control_command.proto \
+		./protos/ad_stack.proto
+	@touch generated/grpc_pb2/__init__.py
+	@echo "📝 Fixing import paths..."
+	@sed -i 's/^import \(.*\)_pb2 as/from . import \1_pb2 as/g' generated/grpc_pb2/*_pb2_grpc.py
+	@sed -i 's/^import \(.*\)_pb2 as/from . import \1_pb2 as/g' generated/grpc_pb2/ad_stack_pb2.py
+	@echo "✓ gRPC code generated in generated/grpc_pb2/"
 
 run: install ## 本番モードで起動
 	@echo "🚀 Starting ATLAS..."

@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package atlas.sensor;
+
+// カメラ画像データ
+message CameraImage {
+  string camera_id = 1;              // センサーID (例: "CAM_FRONT")
+  int32 width = 2;                   // 画像幅
+  int32 height = 3;                  // 画像高さ
+  bytes image_data = 4;              // JPEG圧縮された画像データ
+  int64 timestamp_ns = 5;            // タイムスタンプ（ナノ秒）
+  Transform transform = 6;           // カメラのワールド座標系での姿勢
+}
+
+// LiDARポイントクラウドデータ
+message LidarPointCloud {
+  string lidar_id = 1;               // センサーID (例: "LIDAR_TOP")
+  repeated Point3D points = 2;       // 点群データ
+  int64 timestamp_ns = 3;            // タイムスタンプ（ナノ秒）
+  Transform transform = 4;           // LiDARのワールド座標系での姿勢
+}
+
+// 3D点
+message Point3D {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+  float intensity = 4;               // 反射強度（オプション）
+}
+
+// 位置と姿勢
+message Transform {
+  Vector3 location = 1;              // 位置（x, y, z）
+  Vector3 rotation = 2;              // 姿勢（pitch, yaw, roll）度数法
+}
+
+// 3Dベクトル
+message Vector3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+// 車両状態
+message VehicleState {
+  Transform transform = 1;           // 位置・姿勢
+  Vector3 velocity = 2;              // 速度ベクトル (m/s)
+  Vector3 acceleration = 3;          // 加速度ベクトル (m/s²)
+  float speed_kmh = 4;               // 速度 (km/h)
+  float steering_angle = 5;          // ステアリング角度（度）
+  float throttle = 6;                // スロットル [0.0, 1.0]
+  float brake = 7;                   // ブレーキ [0.0, 1.0]
+  bool hand_brake = 8;               // ハンドブレーキ
+  int32 gear = 9;                    // ギア（-1=R, 0=N, 1+=D）
+}
+
+// センサーデータバンドル（1フレーム分）
+message SensorDataBundle {
+  int64 frame_number = 1;            // フレーム番号
+  int64 timestamp_ns = 2;            // タイムスタンプ（ナノ秒）
+  VehicleState vehicle_state = 3;   // 車両状態
+  repeated CameraImage cameras = 4;  // カメラ画像リスト
+  repeated LidarPointCloud lidars = 5; // LiDAR点群リスト
+  map<string, float> additional_data = 6; // 追加データ（拡張用）
+}

@@ -60,6 +60,9 @@ data/videos/*.avi
 # Generated Python scenario files (UUID-based)
 scenarios/*.py
 
+# Generated gRPC code
+generated/
+
 # Keep directory structure and examples
 !data/scenarios/.gitkeep
 !data/rerun/.gitkeep
