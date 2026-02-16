@@ -11,15 +11,13 @@ services:
     image: carlasim/carla:0.9.15
     deploy:
       replicas: 1
+      placement:
+        constraints:
+          - node.labels.carla == true
       resources:
         limits:
           cpus: "4"
           memory: 8G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
       restart_policy:
         condition: on-failure
         delay: 5s
