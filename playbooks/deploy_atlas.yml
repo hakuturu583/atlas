@@ -13,9 +13,9 @@
     atlas_project_dir: "{{ atlas_project_dir | default('/opt/atlas') }}"
     atlas_stack_name: "{{ atlas_stack_name | default('atlas') }}"
     local_registry_port: "{{ local_registry_port | default('5000') }}"
-    deploy_scenario: "{{ deploy_scenario | default(false) }}"
-    deploy_ad_stack: "{{ deploy_ad_stack | default(false) }}"
-    build_alpamayo: "{{ build_alpamayo | default(false) }}"
+    deploy_scenario: "{{ deploy_scenario | default(false) | bool }}"
+    deploy_ad_stack: "{{ deploy_ad_stack | default(false) | bool }}"
+    build_alpamayo: "{{ build_alpamayo | default(false) | bool }}"
 
   tasks:
     # ========================================
@@ -200,7 +200,7 @@
     - name: Label GPU nodes
       command: docker node update --label-add gpu=true {{ item }}
       loop: "{{ groups['workers'] | default([]) }}"
-      when: hostvars[item].gpu | default(false)
+      when: hostvars[item].gpu | default(false) | bool
       failed_when: false
       tags: [deploy, labels]
 

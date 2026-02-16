@@ -118,7 +118,7 @@
       command: docker node update --label-add gpu=true {{ node_map[hostvars[item].inventory_hostname_short] }}
       loop: "{{ groups['workers'] }}"
       when:
-        - hostvars[item].gpu | default(false)
+        - hostvars[item].gpu | default(false) | bool
         - hostvars[item].inventory_hostname_short in node_map
       tags: [label, gpu]
 
@@ -126,7 +126,7 @@
       command: docker node update --label-add carla=true {{ node_map[hostvars[item].inventory_hostname_short] }}
       loop: "{{ groups['workers'] }}"
       when:
-        - hostvars[item].carla | default(false)
+        - hostvars[item].carla | default(false) | bool
         - hostvars[item].inventory_hostname_short in node_map
       tags: [label, carla]
 
@@ -134,7 +134,7 @@
       command: docker node update --label-add storage=true {{ node_map[hostvars[item].inventory_hostname_short] }}
       loop: "{{ groups['workers'] }}"
       when:
-        - hostvars[item].storage | default(false)
+        - hostvars[item].storage | default(false) | bool
         - hostvars[item].inventory_hostname_short in node_map
       tags: [label, storage]
 

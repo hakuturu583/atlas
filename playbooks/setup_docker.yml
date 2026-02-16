@@ -11,7 +11,7 @@
 
   vars:
     docker_compose_version: "2.24.0"
-    install_nvidia_docker: "{{ gpu | default(false) }}"
+    install_nvidia_docker: "{{ gpu | default(false) | bool }}"
 
   tasks:
     # ========================================
