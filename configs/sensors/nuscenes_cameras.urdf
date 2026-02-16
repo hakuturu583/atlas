@@ -1,0 +1,117 @@
+<?xml version="1.0"?>
+<robot name="nuscenes_sensors">
+  <!--
+    NuScenes Camera Configuration
+    6台のカメラ配置（実際のNuScenesデータセットと同じ）
+    座標系: 自車中心、X=前方、Y=左、Z=上
+    単位: m（メートル）、rad（ラジアン）
+  -->
+
+  <!-- Front Camera -->
+  <link name="camera_front">
+    <sensor name="CAM_FRONT" type="sensor.camera.rgb">
+      <origin xyz="1.70 0.0 1.54" rpy="0 0 0"/>
+      <camera>
+        <image_size_x>1600</image_size_x>
+        <image_size_y>900</image_size_y>
+        <fov>70</fov>
+        <lens_circle_falloff>5.0</lens_circle_falloff>
+        <lens_circle_multiplier>0.0</lens_circle_multiplier>
+        <lens_k>-1.0</lens_k>
+        <lens_kcube>0.0</lens_kcube>
+        <lens_x_size>0.08</lens_x_size>
+        <lens_y_size>0.08</lens_y_size>
+      </camera>
+    </sensor>
+  </link>
+
+  <!-- Front Left Camera -->
+  <link name="camera_front_left">
+    <sensor name="CAM_FRONT_LEFT" type="sensor.camera.rgb">
+      <origin xyz="1.52 0.49 1.54" rpy="0 0 0.9599"/>
+      <camera>
+        <image_size_x>1600</image_size_x>
+        <image_size_y>900</image_size_y>
+        <fov>70</fov>
+        <lens_circle_falloff>5.0</lens_circle_falloff>
+        <lens_circle_multiplier>0.0</lens_circle_multiplier>
+        <lens_k>-1.0</lens_k>
+        <lens_kcube>0.0</lens_kcube>
+        <lens_x_size>0.08</lens_x_size>
+        <lens_y_size>0.08</lens_y_size>
+      </camera>
+    </sensor>
+  </link>
+
+  <!-- Front Right Camera -->
+  <link name="camera_front_right">
+    <sensor name="CAM_FRONT_RIGHT" type="sensor.camera.rgb">
+      <origin xyz="1.52 -0.49 1.54" rpy="0 0 -0.9599"/>
+      <camera>
+        <image_size_x>1600</image_size_x>
+        <image_size_y>900</image_size_y>
+        <fov>70</fov>
+        <lens_circle_falloff>5.0</lens_circle_falloff>
+        <lens_circle_multiplier>0.0</lens_circle_multiplier>
+        <lens_k>-1.0</lens_k>
+        <lens_kcube>0.0</lens_kcube>
+        <lens_x_size>0.08</lens_x_size>
+        <lens_y_size>0.08</lens_y_size>
+      </camera>
+    </sensor>
+  </link>
+
+  <!-- Back Camera -->
+  <link name="camera_back">
+    <sensor name="CAM_BACK" type="sensor.camera.rgb">
+      <origin xyz="0.0 0.0 1.54" rpy="0 0 3.1416"/>
+      <camera>
+        <image_size_x>1600</image_size_x>
+        <image_size_y>900</image_size_y>
+        <fov>110</fov>
+        <lens_circle_falloff>5.0</lens_circle_falloff>
+        <lens_circle_multiplier>0.0</lens_circle_multiplier>
+        <lens_k>-1.0</lens_k>
+        <lens_kcube>0.0</lens_kcube>
+        <lens_x_size>0.08</lens_x_size>
+        <lens_y_size>0.08</lens_y_size>
+      </camera>
+    </sensor>
+  </link>
+
+  <!-- Back Left Camera -->
+  <link name="camera_back_left">
+    <sensor name="CAM_BACK_LEFT" type="sensor.camera.rgb">
+      <origin xyz="0.0 0.49 1.54" rpy="0 0 2.1817"/>
+      <camera>
+        <image_size_x>1600</image_size_x>
+        <image_size_y>900</image_size_y>
+        <fov>110</fov>
+        <lens_circle_falloff>5.0</lens_circle_falloff>
+        <lens_circle_multiplier>0.0</lens_circle_multiplier>
+        <lens_k>-1.0</lens_k>
+        <lens_kcube>0.0</lens_kcube>
+        <lens_x_size>0.08</lens_x_size>
+        <lens_y_size>0.08</lens_y_size>
+      </camera>
+    </sensor>
+  </link>
+
+  <!-- Back Right Camera -->
+  <link name="camera_back_right">
+    <sensor name="CAM_BACK_RIGHT" type="sensor.camera.rgb">
+      <origin xyz="0.0 -0.49 1.54" rpy="0 0 -2.1817"/>
+      <camera>
+        <image_size_x>1600</image_size_x>
+        <image_size_y>900</image_size_y>
+        <fov>110</fov>
+        <lens_circle_falloff>5.0</lens_circle_falloff>
+        <lens_circle_multiplier>0.0</lens_circle_multiplier>
+        <lens_k>-1.0</lens_k>
+        <lens_kcube>0.0</lens_kcube>
+        <lens_x_size>0.08</lens_x_size>
+        <lens_y_size>0.08</lens_y_size>
+      </camera>
+    </sensor>
+  </link>
+</robot>

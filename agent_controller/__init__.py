@@ -43,6 +43,13 @@ from .vehicle_config import (
     RECKLESS_DRIVER,
     NORMAL_DRIVER,
 )
+from .sensor_config import (
+    SensorConfig,
+    SensorDefinition,
+    NUSCENES_CAMERAS,
+    SINGLE_CAMERA,
+    LIDAR_CAMERA,
+)
 
 # 低レベルAPI（上級ユーザー向け）
 from .traffic_manager_wrapper import TrafficManagerWrapper
@@ -61,11 +68,17 @@ __all__ = [
     # メインAPI
     "AgentController",
     "VehicleConfig",
-    # プリセット
+    "SensorConfig",
+    "SensorDefinition",
+    # 車両プリセット
     "AGGRESSIVE_DRIVER",
     "CAUTIOUS_DRIVER",
     "RECKLESS_DRIVER",
     "NORMAL_DRIVER",
+    # センサープリセット
+    "NUSCENES_CAMERAS",
+    "SINGLE_CAMERA",
+    "LIDAR_CAMERA",
     # 低レベルAPI
     "TrafficManagerWrapper",
     "LaneChangeBehavior",

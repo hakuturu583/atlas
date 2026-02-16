@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<robot name="single_camera">
+  <!--
+    Single Front Camera Configuration
+    シンプルな1台カメラ構成（デバッグ・テスト用）
+  -->
+
+  <link name="camera_front">
+    <sensor name="CAM_FRONT" type="sensor.camera.rgb">
+      <origin xyz="2.0 0.0 1.5" rpy="0 0 0"/>
+      <camera>
+        <image_size_x>1920</image_size_x>
+        <image_size_y>1080</image_size_y>
+        <fov>90</fov>
+      </camera>
+    </sensor>
+  </link>
+</robot>
