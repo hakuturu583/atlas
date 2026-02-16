@@ -13,6 +13,7 @@ import grpc
 from PIL import Image
 import io
 import numpy as np
+import argparse
 
 # gRPC protobuf imports
 import os
@@ -67,11 +68,30 @@ class AlpamayoImageTester:
             print("  pip install huggingface-hub[cli]")
             return False
 
-    def build_image(self) -> bool:
+    def image_exists(self) -> bool:
+        """Dockerイメージが既に存在するかチェック"""
+        try:
+            result = subprocess.run(
+                ["docker", "images", "-q", self.image_name],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return bool(result.stdout.strip())
+        except subprocess.CalledProcessError:
+            return False
+
+    def build_image(self, skip_if_exists: bool = False) -> bool:
         """Dockerイメージをビルド"""
         print("\n" + "=" * 60)
         print("Step 1: Building Docker image...")
         print("=" * 60)
+
+        # 既存のイメージをチェック
+        if skip_if_exists and self.image_exists():
+            print(f"✓ Image already exists: {self.image_name}")
+            print("  Skipping build (--skip-build enabled)")
+            return True
 
         cmd = [
             "docker", "build",
@@ -104,11 +124,13 @@ class AlpamayoImageTester:
         # HF_HOMEをホストからマウント
         hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
         print(f"  Mounting HuggingFace cache: {hf_home}")
+        print(f"  GPU access: enabled (--gpus all)")
 
         cmd = [
             "docker", "run",
             "-d",
             "--name", self.container_name,
+            "--gpus", "all",  # GPU access for VRAM
             "-p", f"{self.port}:{self.port}",
             "-v", f"{hf_home}:/app/.cache/huggingface",  # 読み書き可能にする
             "-e", "VLA_MODEL=alpamayo",
@@ -293,7 +315,7 @@ class AlpamayoImageTester:
             print(f"stderr: {e.stderr}")
             return False
 
-    def run_full_test(self) -> bool:
+    def run_full_test(self, skip_build: bool = False) -> bool:
         """完全なテストを実行"""
         print("\n")
         print("╔" + "═" * 58 + "╗")
@@ -303,12 +325,15 @@ class AlpamayoImageTester:
 
         try:
             # Step 0: Download model
-            if not self.download_model():
-                print("\n⚠ Model download failed, but continuing with test...")
-                print("  Container will download model at runtime (slower)")
+            if not skip_build:
+                if not self.download_model():
+                    print("\n⚠ Model download failed, but continuing with test...")
+                    print("  Container will download model at runtime (slower)")
+            else:
+                print("Skipping model download (--skip-build enabled)")
 
             # Step 1: Build
-            if not self.build_image():
+            if not self.build_image(skip_if_exists=skip_build):
                 return False
 
             # Step 2: Start container
@@ -353,8 +378,33 @@ class AlpamayoImageTester:
 
 
 def main():
-    tester = AlpamayoImageTester()
-    success = tester.run_full_test()
+    parser = argparse.ArgumentParser(
+        description="Test Alpamayo-R1 Docker image",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Full test with build
+  python scripts/test_alpamayo_image.py
+
+  # Test existing image without rebuilding
+  python scripts/test_alpamayo_image.py --skip-build
+        """
+    )
+    parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Skip building if image already exists"
+    )
+    parser.add_argument(
+        "--image-name",
+        default="hakuturu583/alpamayo-r1:latest",
+        help="Docker image name (default: hakuturu583/alpamayo-r1:latest)"
+    )
+
+    args = parser.parse_args()
+
+    tester = AlpamayoImageTester(image_name=args.image_name)
+    success = tester.run_full_test(skip_build=args.skip_build)
 
     if success:
         print("\n" + "=" * 60)
